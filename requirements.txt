@@ -1,0 +1,5 @@
+pymupdf
+langchain-text-splitters
+streamlit
+ollama
+numpy
