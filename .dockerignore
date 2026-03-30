@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+.git/
+.cursor/
+data/chroma_db/*.json
+data/chroma_db/*.npy
+data/uploads/*
+!data/uploads/.gitkeep
+*.egg-info/
+.DS_Store
