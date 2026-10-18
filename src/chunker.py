@@ -88,6 +88,15 @@ def chunk_text(
                 source_pages = []
             chunk_data["source_pages"] = source_pages
 
+            if source_pages and pages:
+                first_page_idx = source_pages[0] - 1
+                if 0 <= first_page_idx < len(pages):
+                    p_info = pages[first_page_idx]
+                    if "source_chapter" in p_info:
+                        chunk_data["source_chapter"] = p_info["source_chapter"]
+                    if "progress_percent" in p_info:
+                        chunk_data["progress_percent"] = p_info["progress_percent"]
+
         chunks.append(chunk_data)
 
     logger.info(

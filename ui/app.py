@@ -7,6 +7,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.pdf_processor import extract_text_from_bytes, get_full_text
+from src.epub_processor import extract_text_from_epub_bytes
 from src.chunker import chunk_text
 from src.contextual_chunker import generate_summary, contextualize_chunks
 from src.embedder import store_chunks, get_all_chunks, generate_collection_name
@@ -40,10 +41,12 @@ def init_session_state():
         "quiz_meta": None,       # {id, title, author, chapter, difficulty, source_type}
         "user_answers": {},
         "submitted": False,
-        # PDF flow
+        # PDF / EPUB flow
         "pdf_processed": False,
         "collection_name": None,
         "pdf_filename": None,
+        "uploaded_chapters": [],
+        "uploaded_selected_chapter": "Tüm Kitap (Dengeli Dağılım)",
         "processing": False,
         # Dataset flow
         "dataset_search_results": [],
@@ -158,25 +161,86 @@ def do_generate_quiz_from_book(
     st.session_state.processing = False
 
 
-# ─── PDF akışı ─────────────────────────────────────────────────────────────
+# ─── Doküman (PDF & EPUB) Akışı ──────────────────────────────────────────
 
 
-def process_pdf(uploaded_file, num_questions: int, difficulty: str):
-    """PDF'i işleyip quiz üretir."""
+def generate_new_quiz_from_uploaded(
+    num_questions: int,
+    difficulty: str,
+    target_chapter: str = "Tüm Kitap (Dengeli Dağılım)",
+):
+    """Mevcut yüklenmiş ve vektörleştirilmiş dokümandan yeniden embedding yapmadan doğrudan taze quiz üretir."""
+    if not st.session_state.collection_name:
+        return
     st.session_state.processing = True
+    try:
+        all_chunks = get_all_chunks(st.session_state.collection_name, with_metadata=True)
+        chunks_to_quiz = all_chunks
+        chapter_label = None
 
-    with st.status("📄 PDF işleniyor...", expanded=True) as status:
-        st.write("Metin çıkarılıyor...")
-        pdf_bytes = uploaded_file.getvalue()
-        pages = extract_text_from_bytes(pdf_bytes, uploaded_file.name)
-        full_text = get_full_text(pages)
+        if target_chapter and target_chapter != "Tüm Kitap (Dengeli Dağılım)":
+            filtered = [c for c in all_chunks if c.get("source_chapter") == target_chapter]
+            if len(filtered) >= 2:
+                chunks_to_quiz = filtered
+                chapter_label = target_chapter
+
+        quiz_data = generate_quiz(
+            chunks_to_quiz,
+            num_questions=num_questions,
+            difficulty=difficulty,
+            randomize=True,
+        )
+        st.session_state.quiz_data = quiz_data
+        if st.session_state.quiz_meta:
+            st.session_state.quiz_meta["chapter_label"] = chapter_label
+            st.session_state.quiz_meta["difficulty"] = difficulty
+        st.session_state.user_answers = {}
+        st.session_state.submitted = False
+    except Exception as e:
+        st.error(f"Yeni quiz üretme hatası: {e}")
+        logger.error(f"Yeni quiz üretme hatası: {e}", exc_info=True)
+    finally:
+        st.session_state.processing = False
+
+
+def process_document(
+    uploaded_file,
+    num_questions: int,
+    difficulty: str,
+    target_chapter: str = "Tüm Kitap (Dengeli Dağılım)",
+):
+    """PDF veya EPUB dosyasını işleyip quiz üretir."""
+    st.session_state.processing = True
+    is_epub = uploaded_file.name.lower().endswith(".epub")
+    doc_type_label = "EPUB" if is_epub else "PDF"
+
+    with st.status(f"📄 {doc_type_label} işleniyor...", expanded=True) as status:
+        st.write("Metin ve içerik çıkarılıyor...")
+        file_bytes = uploaded_file.getvalue()
+
+        if is_epub:
+            epub_data = extract_text_from_epub_bytes(file_bytes, uploaded_file.name)
+            pages = epub_data.get("pages", [])
+            full_text = epub_data.get("full_text", "")
+            title = epub_data.get("title") or uploaded_file.name
+            author = epub_data.get("author")
+            chapters = epub_data.get("chapters", [])
+            st.session_state.uploaded_chapters = chapters
+            if chapters:
+                st.write(f"📚 {len(chapters)} bölüm tespit edildi.")
+        else:
+            pages = extract_text_from_bytes(file_bytes, uploaded_file.name)
+            full_text = get_full_text(pages)
+            title = uploaded_file.name
+            author = None
+            st.session_state.uploaded_chapters = []
 
         if not full_text.strip():
-            st.error("PDF'den metin çıkarılamadı. Lütfen metin içeren bir PDF yükleyin.")
+            st.error(f"{doc_type_label} dosyasından metin çıkarılamadı. Lütfen metin içeren bir dosya yükleyin.")
             st.session_state.processing = False
             return
 
-        st.write(f"{len(pages)} sayfa, {len(full_text)} karakter metin çıkarıldı.")
+        st.write(f"{len(pages)} sayfa, {len(full_text):,} karakter metin çıkarıldı.")
 
         st.write("Metin parçalanıyor (overlap ile)...")
         chunks = chunk_text(full_text, pages=pages)
@@ -198,31 +262,53 @@ def process_pdf(uploaded_file, num_questions: int, difficulty: str):
         st.write(f"{len(ctx_chunks)} chunk bağlamlandırıldı.")
 
         st.write("Vektörler oluşturuluyor ve kaydediliyor...")
+        embed_bar = st.progress(0)
+
+        def update_embed_progress(current, total):
+            embed_bar.progress(current / total)
+
         collection_name = generate_collection_name(uploaded_file.name)
-        store_chunks(ctx_chunks, collection_name)
+        store_chunks(ctx_chunks, collection_name, progress_callback=update_embed_progress)
+        embed_bar.empty()
+        st.write(f"{len(ctx_chunks)} chunk vektörleştirildi.")
         st.session_state.collection_name = collection_name
         st.session_state.pdf_filename = uploaded_file.name
         st.session_state.pdf_processed = True
 
         st.write(f"Quiz soruları üretiliyor... (zorluk: **{difficulty}**)")
         all_chunks = get_all_chunks(collection_name, with_metadata=True)
-        quiz_data = generate_quiz(all_chunks, num_questions=num_questions, difficulty=difficulty)
+        chunks_to_quiz = all_chunks
+        chapter_label = None
+
+        if target_chapter and target_chapter != "Tüm Kitap (Dengeli Dağılım)":
+            filtered = [c for c in all_chunks if c.get("source_chapter") == target_chapter]
+            if len(filtered) >= 2:
+                chunks_to_quiz = filtered
+                chapter_label = target_chapter
+
+        quiz_data = generate_quiz(
+            chunks_to_quiz,
+            num_questions=num_questions,
+            difficulty=difficulty,
+            randomize=True,
+        )
 
         st.session_state.quiz_data = quiz_data
         st.session_state.quiz_meta = {
-            "title": uploaded_file.name,
-            "author": None,
+            "title": title,
+            "author": author,
             "chapter_index": None,
-            "chapter_label": None,
+            "chapter_label": chapter_label,
             "difficulty": difficulty,
-            "source_type": "pdf",
+            "source_type": "epub" if is_epub else "pdf",
         }
         st.session_state.user_answers = {}
         st.session_state.submitted = False
 
-        status.update(label="PDF işlendi, quiz hazır! ✅", state="complete")
+        status.update(label=f"{doc_type_label} işlendi, quiz hazır! ✅", state="complete")
 
     st.session_state.processing = False
+
 
 
 # ─── Sidebar ───────────────────────────────────────────────────────────────
@@ -260,12 +346,32 @@ def render_sidebar() -> tuple[int, str]:
                     st.caption(f"Bölüm {meta['chapter_index']}: {meta['chapter_label']}")
                 diff_emoji = {"kolay": "🟢", "orta": "🟡", "zor": "🔴"}.get(meta["difficulty"], "")
                 st.caption(f"Zorluk: {diff_emoji} {meta['difficulty'].capitalize()}")
+            elif meta["source_type"] == "epub":
+                author_str = f"\n\n_{meta['author']}_" if meta.get("author") else ""
+                st.success(f"📚 EPUB: **{meta['title']}**{author_str}")
             else:
                 st.success(f"📄 PDF: **{meta['title']}**")
 
             if st.button("🔄 Yeni Quiz Üret", use_container_width=True):
-                reset_quiz()
-                st.rerun()
+                if meta["source_type"] in ("epub", "pdf") and st.session_state.collection_name:
+                    ch = st.session_state.get("uploaded_selected_chapter", "Tüm Kitap (Dengeli Dağılım)")
+                    generate_new_quiz_from_uploaded(num_questions, difficulty, target_chapter=ch)
+                    st.rerun()
+                elif meta["source_type"] == "book" and st.session_state.dataset_selected_book:
+                    book = st.session_state.dataset_selected_book
+                    do_generate_quiz_from_book(
+                        book["book_id"],
+                        book["title"],
+                        book["author"],
+                        num_questions,
+                        difficulty,
+                        chapter_index=meta.get("chapter_index"),
+                        chapter_label=meta.get("chapter_label"),
+                    )
+                    st.rerun()
+                else:
+                    reset_quiz()
+                    st.rerun()
 
         st.divider()
 
@@ -601,40 +707,107 @@ def render_dataset_tab(num_questions: int, difficulty: str):
         st.info("Yukarıya bir kitap adı veya yazar yazıp 'Ara' butonuna tıklayın.")
 
 
-# ─── Tab 2: PDF Yükleme ─────────────────────────────────────────────────────
+# ─── Tab 2: Doküman Yükleme (PDF & EPUB) ───────────────────────────────────
 
 
-def render_pdf_tab(num_questions: int, difficulty: str):
+def render_upload_tab(num_questions: int, difficulty: str):
     if st.session_state.dataset_no_result:
         st.info(
             f"📌 **'{st.session_state.dataset_query}'** dataset'te bulunamadı. "
-            "Kendi PDF'inizi yükleyerek devam edebilirsiniz."
+            "Kendi PDF veya EPUB dokümanınızı yükleyerek devam edebilirsiniz."
         )
 
     uploaded_file = st.file_uploader(
-        "PDF dosyanızı sürükleyip bırakın",
-        type=["pdf"],
-        help="Maksimum 50MB boyutunda PDF dosyası yükleyebilirsiniz.",
+        "PDF veya EPUB dosyanızı sürükleyip bırakın",
+        type=["pdf", "epub"],
+        help="Maksimum 50MB boyutunda PDF veya EPUB dosyası yükleyebilirsiniz.",
     )
 
-    generate_btn = st.button(
-        "📄 Quiz Oluştur",
-        type="primary",
-        disabled=uploaded_file is None or st.session_state.processing,
+    selected_chapter = "Tüm Kitap (Dengeli Dağılım)"
+    detected_chapters = []
+
+    # Eğer EPUB yüklendiyse bölümleri hızlıca tara
+    if uploaded_file and uploaded_file.name.lower().endswith(".epub"):
+        if st.session_state.uploaded_chapters and st.session_state.pdf_filename == uploaded_file.name:
+            detected_chapters = st.session_state.uploaded_chapters
+        else:
+            try:
+                import fitz
+                doc_peek = fitz.open(stream=uploaded_file.getvalue(), filetype="epub")
+                raw_toc = doc_peek.get_toc() or []
+                detected_chapters = [
+                    {"chapter_index": idx + 1, "title": item[1].strip() or f"Bölüm {idx + 1}"}
+                    for idx, item in enumerate(raw_toc)
+                    if len(item) > 1 and item[1].strip()
+                ]
+                st.session_state.uploaded_chapters = detected_chapters
+                doc_peek.close()
+            except Exception:
+                detected_chapters = []
+
+    if detected_chapters:
+        ch_options = ["Tüm Kitap (Dengeli Dağılım)"] + [c["title"] for c in detected_chapters]
+        selected_chapter = st.selectbox(
+            "🎯 Quiz Üretilecek Bölüm:",
+            options=ch_options,
+            index=0,
+            help="İster tüm kitaptan dengeli soru üretin, isterseniz doğrudan tek bir bölüme odaklanın.",
+        )
+        st.session_state.uploaded_selected_chapter = selected_chapter
+
+    is_already_processed = (
+        st.session_state.pdf_processed
+        and uploaded_file
+        and st.session_state.pdf_filename == uploaded_file.name
+        and st.session_state.collection_name
     )
 
-    if st.session_state.pdf_processed and st.session_state.pdf_filename:
-        st.success(f"✅ Yüklü: {st.session_state.pdf_filename}")
+    if is_already_processed:
+        st.success(f"✅ Yüklü ve İndekslenmiş: **{st.session_state.pdf_filename}**")
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            generate_new_btn = st.button(
+                "🎲 Yeni Quiz Üret (Farklı Sorular)",
+                type="primary",
+                use_container_width=True,
+                disabled=st.session_state.processing,
+            )
+        with col2:
+            reprocess_btn = st.button(
+                "🔄 Dokümanı Baştan İndeksle",
+                use_container_width=True,
+                disabled=st.session_state.processing,
+            )
 
-    if generate_btn and uploaded_file:
-        reset_quiz()
-        st.session_state.dataset_selected_book = None
-        try:
-            process_pdf(uploaded_file, num_questions, difficulty)
+        if generate_new_btn:
+            generate_new_quiz_from_uploaded(num_questions, difficulty, target_chapter=selected_chapter)
             st.rerun()
-        except Exception as e:
-            st.error(f"Hata oluştu: {e}")
-            logger.error(f"PDF işleme hatası: {e}", exc_info=True)
+
+        if reprocess_btn:
+            reset_quiz()
+            st.session_state.dataset_selected_book = None
+            try:
+                process_document(uploaded_file, num_questions, difficulty, target_chapter=selected_chapter)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Hata oluştu: {e}")
+                logger.error(f"Doküman işleme hatası: {e}", exc_info=True)
+    else:
+        generate_btn = st.button(
+            "🚀 Quiz Oluştur",
+            type="primary",
+            disabled=uploaded_file is None or st.session_state.processing,
+        )
+
+        if generate_btn and uploaded_file:
+            reset_quiz()
+            st.session_state.dataset_selected_book = None
+            try:
+                process_document(uploaded_file, num_questions, difficulty, target_chapter=selected_chapter)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Hata oluştu: {e}")
+                logger.error(f"Doküman işleme hatası: {e}", exc_info=True)
 
     if st.session_state.submitted:
         render_score()
@@ -645,7 +818,7 @@ def render_pdf_tab(num_questions: int, difficulty: str):
         and not st.session_state.quiz_data
         and not st.session_state.dataset_no_result
     ):
-        st.info("Bir PDF yükleyin ve 'Quiz Oluştur' butonuna tıklayın.")
+        st.info("Bir PDF veya EPUB yükleyin ve 'Quiz Oluştur' butonuna tıklayın.")
 
 
 # ─── Main ───────────────────────────────────────────────────────────────────
@@ -661,22 +834,23 @@ def main():
 
     st.title("📚 Context RAG — Quiz Generator")
     st.markdown(
-        "Kitap dataset'inden **arama yapın** ya da kendi **PDF'inizi yükleyin**, "
+        "Kitap dataset'inden **arama yapın** ya da kendi **PDF / EPUB** dosyanızı yükleyin, "
         "yapay zeka otomatik olarak çoktan seçmeli quiz soruları üretsin."
     )
 
     num_questions, difficulty = render_sidebar()
 
-    tab_dataset, tab_pdf = st.tabs(
-        ["🔍 Kitap Dataset'i Ara", "📄 PDF Yükle"]
+    tab_dataset, tab_upload = st.tabs(
+        ["🔍 Kitap Dataset'i Ara", "📄 Doküman Yükle (PDF / EPUB)"]
     )
 
     with tab_dataset:
         render_dataset_tab(num_questions, difficulty)
 
-    with tab_pdf:
-        render_pdf_tab(num_questions, difficulty)
+    with tab_upload:
+        render_upload_tab(num_questions, difficulty)
 
 
 if __name__ == "__main__":
     main()
+

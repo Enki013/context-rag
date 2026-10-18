@@ -182,28 +182,89 @@ def _build_context(chunks: list) -> str:
     return "\n\n---\n\n".join(context_parts)
 
 
-def _select_chunk_groups(chunks: list, num_questions: int) -> list[list]:
+_BOILERPLATE_PATTERNS = [
+    r"yayın\s*no\b",
+    r"isbn\b",
+    r"sertifika\s*no\b",
+    r"baskı\s*:\s*[0-9]+",
+    r"matbaa\b",
+    r"kapak\s*tasarımı\b",
+    r"iç\s*düzen\b",
+    r"mizanpaj\b",
+    r"düzelti\b",
+    r"all\s+rights\s+reserved\b",
+    r"bütün\s+hakları\s+saklıdır\b",
+    r"her\s+hakkı\s+saklıdır\b",
+    r"printed\s+in\b",
+    r"published\s+by\b",
+    r"table\s+of\s+contents\b",
+    r"içindekiler\b",
+    r"kronik\s+kitap\b",
+    r"yayıncılık\s+a\.ş\.",
+]
+
+
+def _is_boilerplate_chunk(text: str) -> bool:
+    """Yayın evi künyesi, telif, ISBN veya içindekiler tablosu gibi içerik dışı chunk'ları tespit eder."""
+    t_lower = text.lower()
+    matches = sum(1 for pat in _BOILERPLATE_PATTERNS if re.search(pat, t_lower))
+    if matches >= 2:
+        return True
+    if "isbn" in t_lower and any(w in t_lower for w in ("baskı", "yayın", "matbaa", "copyright")):
+        return True
+    return False
+
+
+def _select_chunk_groups(
+    chunks: list,
+    num_questions: int,
+    randomize: bool = True,
+) -> list[list]:
     """
     Tüm chunk'ları kapsayacak şekilde gruplar oluşturur.
-    Her grup bir LLM çağrısı için kullanılır.
+    Yayıncı künyesi ve telif gibi boilerplate chunk'ları eler.
+    Rastgele katmanlı örnekleme (stratified random sampling) ile her çağrıda
+    kitabın farklı bölümlerinden zengin ve taze soru üretilmesini sağlar.
     """
-    if len(chunks) <= MAX_CHUNKS_PER_CALL:
-        return [chunks]
+    # 1. Künye ve telif chunk'larını ayıkla (eğer yeterli chunk varsa)
+    substantive_chunks = [c for c in chunks if not _is_boilerplate_chunk(_get_chunk_text(c))]
+    if len(substantive_chunks) >= num_questions * 2:
+        chunks_to_use = substantive_chunks
+    else:
+        chunks_to_use = chunks
 
+    if len(chunks_to_use) <= MAX_CHUNKS_PER_CALL:
+        return [chunks_to_use]
+
+    # 2. MAX_CHUNKS_PER_CALL boyutunda gruplar oluştur
     groups = []
-    for i in range(0, len(chunks), MAX_CHUNKS_PER_CALL):
-        group = chunks[i:i + MAX_CHUNKS_PER_CALL]
+    for i in range(0, len(chunks_to_use), MAX_CHUNKS_PER_CALL):
+        group = chunks_to_use[i : i + MAX_CHUNKS_PER_CALL]
         groups.append(group)
 
     num_calls = math.ceil(num_questions / max(1, num_questions // len(groups) if len(groups) > 0 else 1))
     num_calls = min(num_calls, len(groups))
 
-    if num_calls < len(groups):
-        step = len(groups) / num_calls
-        selected = [groups[int(i * step)] for i in range(num_calls)]
-        return selected
+    if num_calls >= len(groups):
+        return groups
 
-    return groups
+    # 3. Katmanlı seçim (Stratified Sampling)
+    selected = []
+    seg_size = len(groups) / num_calls
+
+    for i in range(num_calls):
+        start_idx = int(i * seg_size)
+        end_idx = int((i + 1) * seg_size) - 1
+        end_idx = max(start_idx, min(end_idx, len(groups) - 1))
+
+        if randomize and end_idx > start_idx:
+            chosen_idx = random.randint(start_idx, end_idx)
+        else:
+            chosen_idx = start_idx
+
+        selected.append(groups[chosen_idx])
+
+    return selected
 
 
 def _call_llm(
@@ -238,7 +299,7 @@ def _call_llm(
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
                 ],
-                options={"temperature": 0.4, "top_p": 0.9},
+                options={"temperature": 0.7, "top_p": 0.9},
             )
 
             raw_text = response["message"]["content"]
@@ -274,6 +335,7 @@ def generate_quiz(
     num_questions: int = 5,
     difficulty: str = "orta",
     question_type: str = "multiple_choice",
+    randomize: bool = True,
 ) -> list[dict]:
     """
     Chunk'lardan çoktan seçmeli quiz soruları üretir.
@@ -285,6 +347,7 @@ def generate_quiz(
         num_questions: Üretilecek toplam soru sayısı
         difficulty: Zorluk derecesi ("kolay", "orta", "zor")
         question_type: Soru türü ("multiple_choice")
+        randomize: True ise her seferinde farklı chunk gruplarından rastgele örnekleme yapar
 
     Returns:
         [{"question": "...", "options": [...], "correct_answer": "A",
@@ -302,7 +365,7 @@ def generate_quiz(
     logger.info(f"Algılanan dil: {detected_lang}, zorluk: {difficulty}")
     logger.info(f"Toplam chunk sayısı: {len(chunks)}, hedef soru: {num_questions}")
 
-    groups = _select_chunk_groups(chunks, num_questions)
+    groups = _select_chunk_groups(chunks, num_questions, randomize=randomize)
     logger.info(f"{len(groups)} chunk grubu oluşturuldu")
 
     questions_per_group = max(1, math.ceil(num_questions / len(groups)))

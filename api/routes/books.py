@@ -6,19 +6,29 @@ Kitap arama ve detaylarını getiren endpoint'ler.
 
 import logging
 import os
+import re
 import sqlite3
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from config import BOOKS_DIR, CATALOG_DB_PATH
 from api.schemas import (
     BookChapterCountResponse,
     BookChaptersResponse,
     BookDetailResponse,
+    BookImportResponse,
     BookItem,
     BookSearchResponse,
     ChapterItem,
+    EngineChapterItem,
 )
 from src.dataset_search import extract_chapters, get_book_chapters, search_books
+from src.epub_processor import extract_text_from_epub_bytes
+from src.pdf_processor import extract_text_from_bytes, get_full_text
+from src.question_bank import (
+    get_book as get_engine_book,
+    get_book_chapters as get_engine_chapters,
+    register_book_content,
+)
 
 router = APIRouter(prefix="/books", tags=["Books"])
 logger = logging.getLogger(__name__)
@@ -136,14 +146,147 @@ def get_book_chapter_count_endpoint(book_id: str):
         raise HTTPException(status_code=500, detail=f"Bölüm sayısı hesaplanırken hata oluştu: {e}")
 
 
+@router.post("/import", response_model=BookImportResponse, summary="EPUB veya PDF kitabını sisteme kaydet ve bölümlerini ayrıştır")
+async def import_book_endpoint(
+    file: UploadFile = File(..., description="Yüklenecek EPUB veya PDF dosyası"),
+    book_id: Optional[str] = Form(None, description="Özel kitap ID (boş bırakılırsa dosya adından üretilir)"),
+    title: Optional[str] = Form(None, description="Kitap adı (boşsa dosyadan çıkarılır)"),
+    author: Optional[str] = Form(None, description="Yazar adı"),
+):
+    """
+    Mobil backend'in yeni bir kitabı (EPUB / PDF) bu quiz motoruna kaydetmesi için kullanılır.
+    Kitabın bölümlerini, sayfa aralıklarını ve metinlerini çıkararak kalıcı soru bankası veritabanına indeksler.
+    """
+    filename = file.filename.lower()
+    if not (filename.endswith(".epub") or filename.endswith(".pdf")):
+        raise HTTPException(status_code=400, detail="Yalnızca .epub ve .pdf dosyaları desteklenir.")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Dosya içeriği boş.")
+
+    fmt = "epub" if filename.endswith(".epub") else "pdf"
+    clean_name = re.sub(r"[^a-zA-Z0-9_\-]+", "_", os.path.splitext(file.filename)[0]).strip("_")
+    assigned_book_id = (book_id or f"book_{clean_name}").strip()
+
+    chapters = []
+    total_pages = 0
+    detected_title = title or file.filename
+    detected_author = author
+
+    if fmt == "epub":
+        epub_data = extract_text_from_epub_bytes(contents, file.filename)
+        detected_title = title or epub_data.get("title") or file.filename
+        detected_author = author or epub_data.get("author")
+        total_pages = epub_data.get("total_pages", 0)
+        pages = epub_data.get("pages", [])
+        raw_chapters = epub_data.get("chapters", [])
+
+        if raw_chapters:
+            for ch in raw_chapters:
+                sp = ch.get("start_page", 1)
+                ep = ch.get("end_page", total_pages)
+                ch_pages = [p["text"] for p in pages if sp <= p["page"] <= ep]
+                ch_text = "\n\n".join(ch_pages)
+                if not ch_text.strip() and pages:
+                    ch_text = pages[min(sp - 1, len(pages) - 1)]["text"]
+                progress_pct = round((sp / max(1, total_pages)) * 100, 1)
+                chapters.append({
+                    "chapter_index": ch["chapter_index"],
+                    "title": ch["title"],
+                    "start_page": sp,
+                    "end_page": ep,
+                    "progress_percent": progress_pct,
+                    "raw_text": ch_text,
+                })
+        else:
+            full_text = epub_data.get("full_text", "")
+            chunk_len = max(1, len(full_text) // 4)
+            for idx in range(4):
+                c_text = full_text[idx * chunk_len : (idx + 1) * chunk_len]
+                chapters.append({
+                    "chapter_index": idx + 1,
+                    "title": f"Bölüm {idx + 1}",
+                    "start_page": idx * max(1, total_pages // 4) + 1,
+                    "end_page": (idx + 1) * max(1, total_pages // 4),
+                    "progress_percent": round(idx * 25.0, 1),
+                    "raw_text": c_text,
+                })
+    else:
+        pages = extract_text_from_bytes(contents, file.filename)
+        total_pages = len(pages)
+        full_text = get_full_text(pages)
+        parsed_chapters = extract_chapters(full_text)
+        for ch in parsed_chapters:
+            chapters.append({
+                "chapter_index": ch["chapter_index"],
+                "title": ch["title"],
+                "start_page": 1,
+                "end_page": total_pages,
+                "progress_percent": ch["progress_percent"],
+                "raw_text": ch.get("text", ""),
+            })
+
+    register_book_content(
+        book_id=assigned_book_id,
+        title=detected_title,
+        author=detected_author,
+        source_format=fmt,
+        chapters=chapters,
+        total_pages=total_pages,
+    )
+
+    db_chapters = get_engine_chapters(assigned_book_id)
+    chapter_items = [
+        EngineChapterItem(
+            chapter_index=c["chapter_index"],
+            title=c["title"],
+            start_page=c.get("start_page"),
+            end_page=c.get("end_page"),
+            progress_percent=c.get("progress_percent", 0.0),
+            char_count=c.get("char_count", 0),
+            pool_count=c.get("pool_count", 0),
+        )
+        for c in db_chapters
+    ]
+
+    return BookImportResponse(
+        book_id=assigned_book_id,
+        title=detected_title,
+        author=detected_author,
+        source_format=fmt,
+        total_chapters=len(chapter_items),
+        total_pages=total_pages,
+        chapters=chapter_items,
+    )
+
+
 @router.get("/{book_id}/chapters", response_model=BookChaptersResponse, summary="Kitabın bölümlerini ve ilerleme yüzdelerini getir")
 def get_book_chapters_endpoint(book_id: str):
     """
-    Belirtilen Gutenberg kitabının metnindeki tüm bölümleri (Chapter, Letter, Scene vb.)
-    ve her bölümün kitap içindeki ilerleme yüzdesini (%0 - %100) tespit edip döndürür.
-    Mobil uygulamanın içindekiler tablosu (Table of Contents) ve okuma ilerlemesi (reading progress)
-    için doğrudan kullanılabilir.
+    Belirtilen kitabın metnindeki tüm bölümleri ve her bölümün kitap içindeki ilerleme yüzdesini döndürür.
+    Önce kalıcı soru bankası veritabanına bakar, yoksa Gutenberg kataloğundan çeker.
     """
+    engine_chapters = get_engine_chapters(book_id)
+    if engine_chapters:
+        engine_book = get_engine_book(book_id) or {}
+        chapter_items = [
+            ChapterItem(
+                chapter_index=c["chapter_index"],
+                title=c["title"],
+                progress_percent=c["progress_percent"],
+                char_count=c["char_count"],
+            )
+            for c in engine_chapters
+        ]
+        return BookChaptersResponse(
+            book_id=book_id,
+            title=engine_book.get("title", f"Kitap #{book_id}"),
+            author=engine_book.get("author"),
+            total_chapters=len(chapter_items),
+            chapters=chapter_items,
+        )
+
     if not os.path.isfile(CATALOG_DB_PATH):
         raise HTTPException(status_code=503, detail="Kitap kataloğu henüz kurulmadı.")
 

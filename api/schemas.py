@@ -187,3 +187,79 @@ class QuizEvaluationResponse(BaseModel):
     score_percentage: float = Field(..., example=80.0)
     result_badge: str = Field(..., example="Harika! 🏆")
     details: List[QuestionEvaluationResult]
+
+
+# ─── Mobile Headless Quiz Engine Schemas ───────────────────────────────────
+
+
+class EngineChapterItem(BaseModel):
+    chapter_index: int = Field(..., example=1)
+    title: str = Field(..., example="Bölüm 1: Tanışma")
+    start_page: Optional[int] = Field(None, example=5)
+    end_page: Optional[int] = Field(None, example=24)
+    progress_percent: float = Field(0.0, example=8.5)
+    char_count: int = Field(0, example=12400)
+    pool_count: int = Field(0, example=15, description="Bu bölüm için havuzda hazır bekleyen soru sayısı")
+
+
+class BookImportResponse(BaseModel):
+    book_id: str = Field(..., example="book_kurk_mantolu_madonna")
+    title: str = Field(..., example="Kürk Mantolu Madonna")
+    author: Optional[str] = Field(None, example="Sabahattin Ali")
+    source_format: str = Field(..., example="epub")
+    total_chapters: int = Field(..., example=12)
+    total_pages: int = Field(0, example=160)
+    chapters: List[EngineChapterItem]
+
+
+class EngineServedQuestion(BaseModel):
+    id: int = Field(..., example=101, description="Soru bankasındaki benzersiz soru ID'si")
+    question: str = Field(..., example="Raif Efendi Maria Puder ile nerede karşılaştı?")
+    options: List[str] = Field(..., example=["A) Resim galerisinde", "B) Parkta", "C) Kütüphanede", "D) Trende"])
+    source_pages: Optional[List[int]] = Field(default=[], example=[12, 13])
+    source_chapter: Optional[str] = Field(None, example="Bölüm 1")
+    progress_percent: Optional[float] = Field(None, example=15.0)
+    correct_answer: Optional[str] = Field(None, description="Yalnızca hide_answers=false ise döner")
+    explanation: Optional[str] = Field(None, description="Yalnızca hide_answers=false ise döner")
+
+
+class EngineServeQuizResponse(BaseModel):
+    book_id: str = Field(..., example="book_kurk_mantolu_madonna")
+    title: str = Field(..., example="Kürk Mantolu Madonna")
+    author: Optional[str] = Field(None, example="Sabahattin Ali")
+    chapter_index: int = Field(..., example=1)
+    chapter_title: str = Field(..., example="Bölüm 1: Giriş")
+    difficulty: str = Field("orta", example="orta")
+    cache_hit: bool = Field(..., example=True, description="Sorular doğrudan havuzdan mı geldi (0ms) yoksa LLM ile yeni mi üretildi?")
+    total_pool_size: int = Field(..., example=18, description="Bu bölüm için havuzdaki toplam soru adedi")
+    question_count: int = Field(..., example=5)
+    questions: List[EngineServedQuestion]
+
+
+class BankAnswerItem(BaseModel):
+    question_id: int = Field(..., example=101, description="Cevaplanan sorunun ID'si")
+    selected_option: str = Field(..., example="A) Resim galerisinde", description="Seçilen şıkkın tamamı veya harfi (A)")
+
+
+class BankEvaluationRequest(BaseModel):
+    answers: List[BankAnswerItem]
+
+
+class BankQuestionResult(BaseModel):
+    question_id: int = Field(..., example=101)
+    question_index: int = Field(..., example=0)
+    question: str = Field(..., example="Raif Efendi Maria Puder ile nerede karşılaştı?")
+    user_selected: str = Field(..., example="A) Resim galerisinde")
+    correct_answer: str = Field(..., example="A")
+    correct_option: str = Field(..., example="A) Resim galerisinde")
+    is_correct: bool = Field(..., example=True)
+    explanation: str = Field(..., example="Raif Efendi sergide Kürk Mantolu Madonna tablosunu incelerken karşılaşmıştır.")
+
+
+class BankEvaluationResponse(BaseModel):
+    total_questions: int = Field(..., example=5)
+    correct_count: int = Field(..., example=4)
+    score_percentage: float = Field(..., example=80.0)
+    result_badge: str = Field(..., example="Harika! 🌟")
+    details: List[BankQuestionResult]
+

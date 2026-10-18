@@ -18,10 +18,30 @@ def _get_embedding(text: str) -> list[float]:
     return response["embeddings"][0]
 
 
-def _get_embeddings_batch(texts: list[str]) -> list[list[float]]:
-    """Ollama embedding modeli ile toplu vektör üretir."""
-    response = ollama_client.embed(model=EMBEDDING_MODEL, input=texts)
-    return response["embeddings"]
+def _get_embeddings_batch(
+    texts: list[str],
+    batch_size: int = 32,
+    progress_callback=None,
+) -> list[list[float]]:
+    """
+    Ollama embedding modeli ile toplu vektör üretir.
+    Büyük metin listelerinde Ollama tokenizer EOF / 400 hatasını önlemek
+    için metinleri güvenli parçalara (batch) ayırarak işler.
+    """
+    if not texts:
+        return []
+
+    all_embeddings: list[list[float]] = []
+    total = len(texts)
+
+    for i in range(0, total, batch_size):
+        batch = texts[i : i + batch_size]
+        response = ollama_client.embed(model=EMBEDDING_MODEL, input=batch)
+        all_embeddings.extend(response["embeddings"])
+        if progress_callback:
+            progress_callback(min(i + len(batch), total), total)
+
+    return all_embeddings
 
 
 def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -49,7 +69,12 @@ def generate_collection_name(filename: str) -> str:
     return f"{safe[:50]}_{short_hash}"
 
 
-def store_chunks(chunks: list[dict], collection_name: str) -> str:
+def store_chunks(
+    chunks: list[dict],
+    collection_name: str,
+    batch_size: int = 32,
+    progress_callback=None,
+) -> str:
     """
     Chunk'ları embedding ile vektörleştirip JSON dosyasına kaydeder.
     Contextual chunk'lar varsa contextualized_text ile embedding yapar,
@@ -59,6 +84,8 @@ def store_chunks(chunks: list[dict], collection_name: str) -> str:
         chunks: [{"index": 0, "text": "...", "contextualized_text": "...", "length": 950}, ...]
                contextualized_text opsiyoneldir, yoksa text kullanılır.
         collection_name: Collection adı
+        batch_size: Tek seferde embed edilecek chunk sayısı (Ollama EOF hatasını önler)
+        progress_callback: İlerleme takibi için callable(current, total)
 
     Returns:
         Kullanılan collection adı
@@ -67,8 +94,10 @@ def store_chunks(chunks: list[dict], collection_name: str) -> str:
     for chunk in chunks:
         embed_texts.append(chunk.get("contextualized_text", chunk["text"]))
 
-    logger.info(f"{len(embed_texts)} chunk için embedding üretiliyor...")
-    embeddings = _get_embeddings_batch(embed_texts)
+    logger.info(f"{len(embed_texts)} chunk için embedding üretiliyor (batch_size={batch_size})...")
+    embeddings = _get_embeddings_batch(
+        embed_texts, batch_size=batch_size, progress_callback=progress_callback
+    )
 
     store_data = {
         "collection_name": collection_name,
@@ -84,6 +113,10 @@ def store_chunks(chunks: list[dict], collection_name: str) -> str:
         }
         if "source_pages" in chunk:
             entry["source_pages"] = chunk["source_pages"]
+        if "source_chapter" in chunk:
+            entry["source_chapter"] = chunk["source_chapter"]
+        if "progress_percent" in chunk:
+            entry["progress_percent"] = chunk["progress_percent"]
         store_data["chunks"].append(entry)
 
     store_path = _get_store_path(collection_name)
@@ -110,18 +143,24 @@ def get_all_chunks(collection_name: str, with_metadata: bool = False) -> list:
 
     Args:
         collection_name: Collection adı
-        with_metadata: True ise chunk dict'leri döner (text + source_pages)
+        with_metadata: True ise chunk dict'leri döner (text + metadata)
 
     Returns:
         with_metadata=False: ["chunk text", ...]
-        with_metadata=True: [{"text": "...", "source_pages": [3, 4]}, ...]
+        with_metadata=True: [{"text": "...", "source_pages": [3, 4], "source_chapter": "...", "progress_percent": 12.5}, ...]
     """
     data = _load_store(collection_name)
     sorted_chunks = sorted(data["chunks"], key=lambda x: x["index"])
 
     if with_metadata:
         return [
-            {"text": c["text"], "source_pages": c.get("source_pages", [])}
+            {
+                "index": c.get("index", 0),
+                "text": c["text"],
+                "source_pages": c.get("source_pages", []),
+                "source_chapter": c.get("source_chapter"),
+                "progress_percent": c.get("progress_percent"),
+            }
             for c in sorted_chunks
         ]
 

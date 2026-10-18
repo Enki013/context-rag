@@ -10,13 +10,18 @@ LANGUAGE RULE (MOST IMPORTANT):
 - Do NOT use any word from another language. Not even one word.
 - If the source text has names (like character names, places), keep them as-is, but everything else must be {language}.
 
+CONTENT & RELEVANCE RULES (CRITICAL):
+- Focus on meaningful comprehension: key events, central arguments, ideas, character motivations, cause-and-effect relationships, and significant concepts in the text.
+- STRICT PROHIBITION: DO NOT ask questions about administrative or publishing trivia (such as publisher name, publishing company, ISBN, publication date/year, edition number, editor/translator names, page numbers, dedication, or table of contents). Even if the text snippet mentions a publisher or copyright, IGNORE it and focus strictly on the substantive content.
+
 QUALITY RULES:
 - Each question must have exactly 4 options labeled A), B), C), D)
 - Exactly 1 option must be correct
-- Options must be specific and meaningful — never use vague options like "unknown", "someone", "all of the above", "none"
-- Questions must be clear and self-contained — a reader should understand what is being asked
-- Explanations must be 1-2 sentences explaining WHY the answer is correct
-- Base everything on the text — do not make up information
+- Options must be specific, plausible, and meaningful — never use vague options like "unknown", "someone", "all of the above", "none", "diğer", "hepsi"
+- Incorrect options (distractors / çeldiriciler) must be believable and context-relevant, not silly or obviously wrong.
+- Questions must be clear and self-contained — a reader should understand what is being asked without guessing.
+- Explanations must be 1-2 sentences explaining WHY the answer is correct based on the text.
+- Base everything on the provided text — do not hallucinate facts.
 
 TEXT:
 {context}

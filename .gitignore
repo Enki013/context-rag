@@ -28,6 +28,8 @@ data/uploads/
 data/chroma_db/
 data/books/
 data/dataset_cache/
+data/*.db
+*.db
 
 # Environment variables
 .env
