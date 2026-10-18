@@ -1,0 +1,517 @@
+{
+  "info": {
+    "_postman_id": "c8f2b1a0-9e4a-4e89-b5c4-7d9e4a8f9c11",
+    "name": "Context RAG - Mobile & Web Quiz API",
+    "description": "Mobil ve Web uygulamaları için RAG tabanlı kitap arama, PDF işleme, çoktan seçmeli quiz üretimi ve otomatik cevap değerlendirme API koleksiyonu.\n\nBackend: FastAPI + Ollama (qwen2.5:14b & bge-m3) + Project Gutenberg (79k+ Kitap)\n\nv1.1.0 — RESTful POST /api/v1/quizzes endpoint eklendi.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string",
+      "description": "API Sunucu adresi (Emülatörler için Android: http://10.0.2.2:8000, iOS: http://localhost:8000 veya yerel IP)"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Sistem & Sağlık",
+      "item": [
+        {
+          "name": "Health Check (Sistem & Model Durumu)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health"
+              ]
+            },
+            "description": "Backend API, Ollama bağlantısı, aktif modeller ve kayıtlı kitap sayısını kontrol eder."
+          },
+          "response": []
+        },
+        {
+          "name": "API Temel Bilgisi",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1"
+              ]
+            },
+            "description": "API sürüm ve Swagger dokümantasyon adreslerini döndürür."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Kitap Kataloğu & Arama",
+      "item": [
+        {
+          "name": "Kitap Ara - Sherlock Holmes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/books/search?q=Sherlock Holmes&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "books",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Sherlock Holmes",
+                  "description": "Aranacak kelime (kitap adı, yazar veya konu)"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Maksimum sonuç sayısı"
+                }
+              ]
+            },
+            "description": "Yerel 79,000+ kitaplık SQLite FTS5 veritabanında anlık (<1ms) arama yapar."
+          },
+          "response": []
+        },
+        {
+          "name": "Kitap Ara - Jane Austen",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/books/search?q=Jane Austen&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "books",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Jane Austen"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Yazara göre arama örneği."
+          },
+          "response": []
+        },
+        {
+          "name": "Kitap Ara - Felsefe / Konu",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/books/search?q=Philosophy&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "books",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Philosophy"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Kategori / konu bazlı arama örneği."
+          },
+          "response": []
+        },
+        {
+          "name": "Kitap Detayı (ID: 1661)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/books/1661",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "books",
+                "1661"
+              ]
+            },
+            "description": "Kitabın detaylı bilgilerini ve yerel diskte önbellekte olup olmadığını döndürür."
+          },
+          "response": []
+        },
+        {
+          "name": "Kitap Bölüm Sayısı ve İndeksleri (ID: 1661) (Beta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/books/1661/chapter-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "books",
+                "1661",
+                "chapter-count"
+              ]
+            },
+            "description": "🧪 [BETA] Deneysel özellik: Kitap bölümlerini ayrıştırma motoru geliştirme aşamasındadır.\n\nKitabın toplam bölüm sayısını ve geçerli bölüm indeksleri listesini ([1, 2, ..., N]) döndürür. Mobil uygulamada bölüm seçici (dropdown, picker vb.) doldurmak için idealdir."
+          },
+          "response": []
+        },
+        {
+          "name": "Kitap Bölümleri & İlerleme Detayı (ID: 1661) (Beta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/books/1661/chapters",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "books",
+                "1661",
+                "chapters"
+              ]
+            },
+            "description": "🧪 [BETA] Deneysel özellik: Kitap bölümlerini ayrıştırma motoru geliştirme aşamasındadır.\n\nKitaptaki tüm bölümleri (Chapter, Letter, Scene), başlangıç ilerleme yüzdelerini (%0 - %100) ve uzunluklarını döndürür. Mobil uygulamanın içindekiler tablosu ve okuma takibi için kullanılır."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Quiz Üretimi — RESTful (Yeni)",
+      "item": [
+        {
+          "name": "Quiz Oluştur — Tüm Kitaptan (POST /api/v1/quizzes)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": {\n    \"type\": \"book\",\n    \"book_id\": \"1661\"\n  },\n  \"question_count\": 5,\n  \"difficulty\": \"medium\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quizzes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quizzes"
+              ]
+            },
+            "description": "RESTful quiz kaynağı oluşturur. book_id yeterlidir; başlık/yazar katalogdan otomatik çözülür. difficulty: easy | medium | hard. Yanıt 201 Created + id/status/created_at alanları."
+          },
+          "response": []
+        },
+        {
+          "name": "Quiz Oluştur — Belirli Bölümden (POST /api/v1/quizzes) (Beta)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": {\n    \"type\": \"book\",\n    \"book_id\": \"1661\",\n    \"chapter_index\": 2\n  },\n  \"question_count\": 5,\n  \"difficulty\": \"hard\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quizzes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quizzes"
+              ]
+            },
+            "description": "🧪 [BETA] Deneysel özellik: Kitap bölümlerini ayrıştırma motoru geliştirme aşamasındadır.\n\nBelirli bir bölümden (chapter_index: 2) quiz üretir. Bölüm indeksleri için GET /api/v1/books/{book_id}/chapter-count kullanın."
+          },
+          "response": []
+        },
+        {
+          "name": "Quiz Oluştur — Kolay Seviye / Frankenstein (POST /api/v1/quizzes)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": {\n    \"type\": \"book\",\n    \"book_id\": \"84\"\n  },\n  \"question_count\": 3,\n  \"difficulty\": \"easy\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quizzes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quizzes"
+              ]
+            },
+            "description": "Frankenstein (ID: 84) kitabından kolay seviye 3 soruluk quiz üretir."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Quiz Üretimi — Eski Endpoint'ler (Geriye Dönük Uyumluluk)",
+      "item": [
+        {
+          "name": "Kitaptan Quiz Üret (Sadece book_id ile)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"book_id\": \"1661\",\n  \"num_questions\": 5,\n  \"difficulty\": \"orta\",\n  \"chapter_index\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quiz/generate-from-book",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quiz",
+                "generate-from-book"
+              ]
+            },
+            "description": "⚠️ Eski endpoint — geriye dönük uyumluluk için korunmuştur. Yeni geliştirmeler için POST /api/v1/quizzes kullanın.\n\nKatalogdaki bir kitaptan çoktan seçmeli quiz üretir. 'book_id' kitabı tanımlamak için tek başına yeterlidir ('title' ve 'author' katalogdan otomatik doldurulur). 'chapter_index' opsiyoneldir; verilirse yalnızca o bölümden soru üretilir, verilmezse tüm kitaptan dengeli seçilir."
+          },
+          "response": []
+        },
+        {
+          "name": "PDF'ten Quiz Üret (Multipart File)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "Quiz üretilecek PDF belgesi"
+                },
+                {
+                  "key": "num_questions",
+                  "value": "5",
+                  "type": "text"
+                },
+                {
+                  "key": "difficulty",
+                  "value": "orta",
+                  "type": "text",
+                  "description": "kolay | orta | zor"
+                },
+                {
+                  "key": "question_type",
+                  "value": "multiple_choice",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quiz/generate-from-pdf",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quiz",
+                "generate-from-pdf"
+              ]
+            },
+            "description": "⚠️ Eski endpoint — geriye dönük uyumluluk için korunmuştur. Yeni geliştirmeler için POST /api/v1/quizzes kullanın.\n\nMobil cihazdan yüklenen PDF belgesini okur, Contextual Retrieval ile bağlamlandırır, embed eder ve quiz üretir."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Cevap Kontrolü & Skor",
+      "item": [
+        {
+          "name": "Quiz Cevaplarını Değerlendir",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_answers\": [\n    {\n      \"question_index\": 0,\n      \"selected_option\": \"A) Baker Street 221B\"\n    },\n    {\n      \"question_index\": 1,\n      \"selected_option\": \"B) Moriarty\"\n    }\n  ],\n  \"quiz\": [\n    {\n      \"question\": \"Sherlock Holmes nerede yaşamaktadır?\",\n      \"options\": [\n        \"A) Baker Street 221B\",\n        \"B) Oxford Street 12\",\n        \"C) Fleet Street 4\",\n        \"D) Abbey Road 10\"\n      ],\n      \"correct_answer\": \"A\",\n      \"explanation\": \"Holmes ve Dr. Watson, Baker Street 221B adresinde ikamet etmektedir.\",\n      \"source_pages\": [1]\n    },\n    {\n      \"question\": \"Sherlock Holmes'un en yakın çalışma arkadaşı ve biyografi yazarı kimdir?\",\n      \"options\": [\n        \"A) Dedektif Lestrade\",\n        \"B) Dr. John H. Watson\",\n        \"C) Profesör Moriarty\",\n        \"D) Mycroft Holmes\"\n      ],\n      \"correct_answer\": \"B\",\n      \"explanation\": \"Dr. John Watson, Holmes'un kadim dostu ve olayları kaleme alan kişidir.\",\n      \"source_pages\": [2]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quiz/evaluate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quiz",
+                "evaluate"
+              ]
+            },
+            "description": "Mobil istemcinin gönderdiği kullanıcı cevaplarını quiz şıklarıyla karşılaştırır. Doğruluk oranı, rozet ve soru bazlı geri bildirim döner."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -25,3 +25,11 @@ CONTEXTUAL_LLM_THRESHOLD = 50  # Bu chunk sayısının altında LLM ile bağlam 
 
 # Limits
 MAX_FILE_SIZE_MB = 50
+
+# Dataset & Books (Project Gutenberg)
+HF_DATASET_NAME = "Project Gutenberg"
+DATASET_CACHE_DIR = os.path.join(BASE_DIR, "data", "dataset_cache")
+CATALOG_DB_PATH = os.path.join(DATASET_CACHE_DIR, "catalog.db")
+BOOKS_DIR = os.path.join(BASE_DIR, "data", "books")
+DATASET_SEARCH_THRESHOLD = 0.0    # SQLite FTS arama kullandığı için threshold gerekmez
+DATASET_MAX_RESULTS = 20          # Quiz'e beslenecek chunk sayısı
