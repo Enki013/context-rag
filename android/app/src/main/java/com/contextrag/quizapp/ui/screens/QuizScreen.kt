@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -69,7 +70,7 @@ fun QuizScreen(
                     )
                     Button(
                         onClick = onNavigateToBooks,
-                        shape = MaterialTheme.shapes.full
+                        shape = CircleShape
                     ) {
                         Text("Kitap ve Bölüm Seç")
                     }
@@ -248,7 +249,7 @@ fun QuizScreen(
             OutlinedButton(
                 onClick = onPrevQuestion,
                 enabled = currentIdx > 0,
-                shape = MaterialTheme.shapes.full
+                shape = CircleShape
             ) {
                 Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(4.dp))
@@ -258,7 +259,7 @@ fun QuizScreen(
             if (currentIdx < totalQuestions - 1) {
                 FilledTonalButton(
                     onClick = onNextQuestion,
-                    shape = MaterialTheme.shapes.full
+                    shape = CircleShape
                 ) {
                     Text("Sonraki")
                     Spacer(modifier = Modifier.width(4.dp))
@@ -267,7 +268,7 @@ fun QuizScreen(
             } else {
                 Button(
                     onClick = { showConfirmDialog = true },
-                    shape = MaterialTheme.shapes.full,
+                    shape = CircleShape,
                     enabled = !state.isEvaluating
                 ) {
                     if (state.isEvaluating) {

@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
@@ -61,7 +62,7 @@ fun ResultScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Button(onClick = onBackToBooks, shape = MaterialTheme.shapes.full) {
+                    Button(onClick = onBackToBooks, shape = CircleShape) {
                         Text("Kitaplara Git")
                     }
                 }
@@ -123,7 +124,7 @@ fun ResultScreen(
                         FilledTonalButton(
                             onClick = onRetryQuiz,
                             modifier = Modifier.weight(1f),
-                            shape = MaterialTheme.shapes.full
+                            shape = CircleShape
                         ) {
                             Icon(Icons.Default.Replay, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -133,7 +134,7 @@ fun ResultScreen(
                         Button(
                             onClick = onBackToBooks,
                             modifier = Modifier.weight(1f),
-                            shape = MaterialTheme.shapes.full
+                            shape = CircleShape
                         ) {
                             Text("Bölüm Değiştir")
                         }

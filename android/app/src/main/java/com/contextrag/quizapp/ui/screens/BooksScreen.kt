@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bolt
@@ -282,7 +283,7 @@ fun BooksScreen(
                                 onClick = onStartQuiz,
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = state.selectedChapter != null && !state.isLoadingQuiz,
-                                shape = MaterialTheme.shapes.full
+                                shape = CircleShape
                             ) {
                                 if (state.isLoadingQuiz) {
                                     CircularProgressIndicator(

@@ -44,3 +44,10 @@ data/*.db
 # Logs
 *.log
 logs/
+
+# Android
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
