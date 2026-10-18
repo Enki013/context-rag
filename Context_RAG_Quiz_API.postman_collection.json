@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "c8f2b1a0-9e4a-4e89-b5c4-7d9e4a8f9c11",
     "name": "Context RAG - Mobile & Web Quiz API",
-    "description": "Mobil ve Web uygulamaları için RAG tabanlı kitap arama, PDF işleme, çoktan seçmeli quiz üretimi ve otomatik cevap değerlendirme API koleksiyonu.\n\nBackend: FastAPI + Ollama (qwen2.5:14b & bge-m3) + Project Gutenberg (79k+ Kitap)\n\nv1.1.0 — RESTful POST /api/v1/quizzes endpoint eklendi.",
+    "description": "Mobil ve Web uygulamaları için RAG tabanlı kitap arama, EPUB/PDF işleme, bölüm odaklı quiz üretimi, kalıcı soru bankası (0ms Cache Hit) ve hile korumalı cevap değerlendirme API koleksiyonu.\n\nBackend: FastAPI + Ollama (qwen2.5:14b & bge-m3) + SQLite Question Bank\n\nv1.2.0 — Headless Question Bank, EPUB desteği, Hile Korumalı (/serve, /evaluate-answers, /populate, /books/import) endpoint'leri eklendi.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -260,6 +260,60 @@
             "description": "🧪 [BETA] Deneysel özellik: Kitap bölümlerini ayrıştırma motoru geliştirme aşamasındadır.\n\nKitaptaki tüm bölümleri (Chapter, Letter, Scene), başlangıç ilerleme yüzdelerini (%0 - %100) ve uzunluklarını döndürür. Mobil uygulamanın içindekiler tablosu ve okuma takibi için kullanılır."
           },
           "response": []
+        },
+        {
+          "name": "Kitap İçe Aktar & Bölümle (EPUB/PDF Import)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "description": "Yüklenecek EPUB veya PDF dosyası"
+                },
+                {
+                  "key": "book_id",
+                  "value": "book_kurk_mantolu_madonna",
+                  "type": "text",
+                  "description": "Opsiyonel özel ID (belirtilmezse dosya adından üretilir)"
+                },
+                {
+                  "key": "title",
+                  "value": "Kürk Mantolu Madonna",
+                  "type": "text",
+                  "description": "Opsiyonel kitap başlığı"
+                },
+                {
+                  "key": "author",
+                  "value": "Sabahattin Ali",
+                  "type": "text",
+                  "description": "Opsiyonel yazar adı"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/books/import",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "books",
+                "import"
+              ]
+            },
+            "description": "Mobil veya yönetim panelinden bir EPUB/PDF yükler. Gömülü içindekiler (TOC) ve sayfaları çıkarıp veritabanına böler ve bölüm listesini döner."
+          },
+          "response": []
         }
       ]
     },
@@ -471,6 +525,59 @@
             "description": "⚠️ Eski endpoint — geriye dönük uyumluluk için korunmuştur. Yeni geliştirmeler için POST /api/v1/quizzes kullanın.\n\nMobil cihazdan yüklenen PDF belgesini okur, Contextual Retrieval ile bağlamlandırır, embed eder ve quiz üretir."
           },
           "response": []
+        },
+        {
+          "name": "EPUB'tan Quiz Üret (Multipart File)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "description": "Quiz üretilecek EPUB dosyası"
+                },
+                {
+                  "key": "num_questions",
+                  "value": "5",
+                  "type": "text",
+                  "description": "1 - 10 arası soru sayısı"
+                },
+                {
+                  "key": "difficulty",
+                  "value": "orta",
+                  "type": "text",
+                  "description": "kolay | orta | zor"
+                },
+                {
+                  "key": "question_type",
+                  "value": "multiple_choice",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quiz/generate-from-epub",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quiz",
+                "generate-from-epub"
+              ]
+            },
+            "description": "Mobil veya web istemcisinden yüklenen EPUB dosyasından gömülü bölümleri ayıklar, Contextual Retrieval ile bağlamlandırır ve quiz üretir."
+          },
+          "response": []
         }
       ]
     },
@@ -508,6 +615,146 @@
               ]
             },
             "description": "Mobil istemcinin gönderdiği kullanıcı cevaplarını quiz şıklarıyla karşılaştırır. Doğruluk oranı, rozet ve soru bazlı geri bildirim döner."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Headless Soru Bankası & Mobil Quiz Servisi (Anti-Cheat & 0ms Cache)",
+      "item": [
+        {
+          "name": "Bölüm Quizi Getir (Cache Hit 0ms / On-Demand LLM)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quiz/serve?book_id=1661&chapter_index=1&count=5&difficulty=orta&hide_answers=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quiz",
+                "serve"
+              ],
+              "query": [
+                {
+                  "key": "book_id",
+                  "value": "1661",
+                  "description": "Kitap ID'si"
+                },
+                {
+                  "key": "chapter_index",
+                  "value": "1",
+                  "description": "1-tabanlı bölüm numarası"
+                },
+                {
+                  "key": "count",
+                  "value": "5",
+                  "description": "İstenen soru sayısı (1-20)"
+                },
+                {
+                  "key": "difficulty",
+                  "value": "orta",
+                  "description": "kolay | orta | zor"
+                },
+                {
+                  "key": "hide_answers",
+                  "value": "true",
+                  "description": "Hile koruması: true olduğunda correct_answer ve explanation null döner"
+                }
+              ]
+            },
+            "description": "Mobil kullanıcı okuduğu bölüme geldiğinde quiz çeker. Havuzda yeterli soru varsa 0 milisaniyede döner (Cache Hit). Havuz boşsa LLM ile anında üretip havuza ekler ve döner (Cache Miss). Doğru cevaplar istemciye sızdırılmaz."
+          },
+          "response": []
+        },
+        {
+          "name": "Hile Korumalı Cevap Değerlendirme (Soru ID Bazlı)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"answers\": [\n    {\n      \"question_id\": 1,\n      \"selected_option\": \"A) Baker Street 221B\"\n    },\n    {\n      \"question_id\": 2,\n      \"selected_option\": \"B\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quiz/evaluate-answers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quiz",
+                "evaluate-answers"
+              ]
+            },
+            "description": "Mobil kullanıcı test bittiğinde yalnızca soru ID'leri ve seçtiği şıkları gönderir. Sunucu veritabanındaki soru bankasından doğrular, skor hesaplar ve doğru şık açıklamalarıyla birlikte döner."
+          },
+          "response": []
+        },
+        {
+          "name": "Soru Havuzunu Önceden Doldur (Populate Pool)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quiz/populate?book_id=1661&chapter_index=1&target_count=10&difficulty=orta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quiz",
+                "populate"
+              ],
+              "query": [
+                {
+                  "key": "book_id",
+                  "value": "1661",
+                  "description": "Kitap ID"
+                },
+                {
+                  "key": "chapter_index",
+                  "value": "1",
+                  "description": "Bölüm no"
+                },
+                {
+                  "key": "target_count",
+                  "value": "10",
+                  "description": "Hedef soru sayısı (1-30)"
+                },
+                {
+                  "key": "difficulty",
+                  "value": "orta",
+                  "description": "kolay | orta | zor"
+                }
+              ]
+            },
+            "description": "Arka planda (Admin veya Cron/Worker) bir bölüm için soru havuzunu önceden üretip veritabanına yığar. Kullanıcılar geldiğinde %100 Cache Hit (0ms) ile karşılaşır."
           },
           "response": []
         }

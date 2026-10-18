@@ -24,15 +24,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger("api")
 
 app = FastAPI(
-    title="Context RAG - Quiz Generation API",
+    title="Context RAG - Mobile & Headless Quiz Engine API",
     description=(
-        "Mobil ve web uygulamaları için RAG tabanlı kitap ve PDF quiz üretim API'si.\n\n"
-        "- 📚 **Project Gutenberg Kataloğu:** 79,000+ kitapta anlık yerel arama ve quiz üretimi\n"
-        "- 📄 **PDF Yükleme:** Contextual Retrieval ile PDF'lerden bağlamsal quiz üretimi\n"
-        "- 🎯 **Otomatik Değerlendirme:** Kullanıcı cevaplarının puanlanması ve analizi\n"
+        "Mobil ve web uygulamaları için RAG tabanlı kitap arama, EPUB/PDF işleme, "
+        "bölüm odaklı kalıcı soru bankası (0ms Cache Hit) ve hile korumalı değerlendirme mikroservisi.\n\n"
+        "- 📚 **Project Gutenberg Kataloğu:** 79,000+ kitapta anlık yerel FTS5 arama\n"
+        "- 📑 **EPUB & PDF İçerik İçe Aktarma:** Gömülü TOC ve sayfalarla otomatik bölümleme (`POST /api/v1/books/import`)\n"
+        "- ⚡ **Headless Soru Bankası & Önbellek:** İhtiyaç anında LLM üretimi veya <1ms anlık havuz dağıtımı (`GET /api/v1/quiz/serve`)\n"
+        "- 🛡️ **Hile Korumalı Değerlendirme:** Doğru cevapları istemciye sızdırmadan soru ID bazlı sunucu tarafı puanlama (`POST /api/v1/quiz/evaluate-answers`)\n"
+        "- 🚫 **Anti-Spoiler Güvencesi:** Quizler kullanıcının okuduğu bölümün sınırlarına kilitlidir\n"
         "- 🤖 **Ollama Entegrasyonu:** qwen2.5:14b ve bge-m3 yerel modelleri"
     ),
-    version="1.0.0",
+    version="1.2.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )

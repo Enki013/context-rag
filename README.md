@@ -135,60 +135,72 @@ Content-Type: multipart/form-data
 - `difficulty`: string ("kolay" | "orta" | "zor")
 - `question_type`: string ("multiple_choice")
 
+#### 📱 EPUB'tan Quiz Üret
+```http
+POST /api/v1/quiz/generate-from-epub
+Content-Type: multipart/form-data
+```
+*Form Alanları:*
+- `file`: EPUB dosyası (Binary, maks. 50 MB)
+- `num_questions`: int (varsayılan 5, 1-10 arası)
+- `difficulty`: string ("kolay" | "orta" | "zor")
+- `question_type`: string ("multiple_choice")
+
 ---
 
-### 4. Cevap Değerlendirme & Skor
+### 4. Headless Soru Bankası & Mobil Quiz Servisi (0ms Cache & Anti-Cheat)
 
-Mobil cihazda kullanıcı quiz'i tamamladığında, cevapları bu endpoint'e göndererek anında puanlama ve açıklama alabilirsiniz:
+Mobil uygulamalar için kullanıcı verisinden bağımsız, kalıcı soru havuzlu (<1ms Cache Hit) ve hile korumalı quiz motoru.
+
+> Detaylı mobil entegrasyon kılavuzu için [docs/question_bank_api.md](docs/question_bank_api.md) belgesini inceleyin.
+
+#### 📥 Kitap & Bölüm İçe Aktar
+```http
+POST /api/v1/books/import
+Content-Type: multipart/form-data
+```
+EPUB veya PDF dosyasını okur, gömülü içindekiler (TOC) ve sayfalarla otomatik bölümler ve sisteme kaydeder.
+
+#### 🎯 Bölüm Quizi Getir (Cache Hit / On-Demand)
+```http
+GET /api/v1/quiz/serve?book_id={book_id}&chapter_index={chapter_index}&count=5&difficulty=orta&hide_answers=true
+```
+- Havuzda soru varsa: **0 milisaniyede** havuzdan rastgele soru döner (`cache_hit: true`).
+- Havuz boşsa: LLM ile ilgili bölüm metninden sorular üretip havuza kaydeder (`cache_hit: false`).
+- `hide_answers=true`: Doğru şıklar ve açıklamalar istemciye sızdırılmaz (`correct_answer: null`).
+
+#### 🛡️ Hile Korumalı Cevap Değerlendirme (Soru ID Bazlı)
+```http
+POST /api/v1/quiz/evaluate-answers
+Content-Type: application/json
+```
+```json
+{
+  "answers": [
+    {
+      "question_id": 101,
+      "selected_option": "A) Baker Street 221B"
+    }
+  ]
+}
+```
+Mobil istemci doğru şıkkı bilmeden yalnızca soru ID'si ve seçtiği şıkkı gönderir; sunucu veritabanında doğrular ve puanlama yapar.
+
+#### ⚡ Soru Havuzunu Önceden Doldur (Pre-populate Pool)
+```http
+POST /api/v1/quiz/populate?book_id={book_id}&chapter_index={chapter_index}&target_count=15&difficulty=orta
+```
+Arka planda (Admin / Cron) bir bölümün soru havuzunu önceden hazırlar.
+
+---
+
+### 5. Geriye Dönük Uyumluluk: Quiz Cevaplarını Değerlendir
 
 ```http
 POST /api/v1/quiz/evaluate
 Content-Type: application/json
 ```
-*Gövde:*
-```json
-{
-  "user_answers": [
-    {
-      "question_index": 0,
-      "selected_option": "A) Baker Street 221B"
-    }
-  ],
-  "quiz": [
-    {
-      "question": "Sherlock Holmes hangi sokakta yaşamaktadır?",
-      "options": [
-        "A) Baker Street 221B",
-        "B) Oxford Street 12",
-        "C) Fleet Street 4",
-        "D) Abbey Road 10"
-      ],
-      "correct_answer": "A",
-      "explanation": "Holmes ve Watson, Baker Street 221B adresinde ikamet etmektedir."
-    }
-  ]
-}
-```
-*Yanıt:*
-```json
-{
-  "total_questions": 1,
-  "correct_count": 1,
-  "score_percentage": 100.0,
-  "result_badge": "Harika! 🏆",
-  "details": [
-    {
-      "question_index": 0,
-      "question": "Sherlock Holmes hangi sokakta yaşamaktadır?",
-      "user_selected": "A) Baker Street 221B",
-      "correct_answer": "A",
-      "correct_option": "A) Baker Street 221B",
-      "is_correct": true,
-      "explanation": "Holmes ve Watson, Baker Street 221B adresinde ikamet etmektedir."
-    }
-  ]
-}
-```
+Kullanıcının gönderdiği test şıklarını orijinal quiz listesiyle karşılaştırarak puanlar.
 
 ---
 
@@ -198,4 +210,5 @@ Content-Type: application/json
 2. Sol üstteki **Import** butonuna tıklayın.
 3. Proje dizinindeki `Context_RAG_Quiz_API.postman_collection.json` dosyasını seçin.
 4. Koleksiyon değişkeni `baseUrl` varsayılan olarak `http://localhost:8000` ayarlıdır.
-5. İstekleri hemen test etmeye başlayabilirsiniz!
+5. Koleksiyon içerisindeki 6 ana kategori altındaki tüm istekleri (Arama, EPUB/PDF Import, Bölüm Quizi, Hile Korumalı Değerlendirme vb.) hemen test edebilirsiniz!
+
