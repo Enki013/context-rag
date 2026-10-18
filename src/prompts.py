@@ -133,7 +133,12 @@ def build_system_prompt(language: str) -> str:
     return SYSTEM_PROMPT.format(language=language)
 
 
-def build_quiz_prompt(context: str, count: int = 5, language: str = None) -> str:
+def build_quiz_prompt(
+    context: str,
+    count: int = 5,
+    language: str = None,
+    difficulty: str = "orta",
+) -> str:
     """
     Quiz üretimi için prompt oluşturur.
     Dil otomatik algılanır veya manuel verilebilir.
@@ -142,6 +147,7 @@ def build_quiz_prompt(context: str, count: int = 5, language: str = None) -> str
         context: LLM'e verilecek metin bağlamı
         count: Üretilecek soru sayısı
         language: Soru dili. None ise context'ten otomatik algılanır.
+        difficulty: Soru zorluk derecesi ("kolay", "orta", "zor")
 
     Returns:
         Formatlanmış prompt string
@@ -149,8 +155,15 @@ def build_quiz_prompt(context: str, count: int = 5, language: str = None) -> str
     if language is None:
         language = detect_language(context)
 
+    diff_instruction = ""
+    diff_lower = str(difficulty or "").lower()
+    if diff_lower in ("kolay", "easy"):
+        diff_instruction = "\n\nDIFFICULTY REQUIREMENT: Easy / Straightforward. Focus on direct, key facts clearly stated in the text."
+    elif diff_lower in ("zor", "hard"):
+        diff_instruction = "\n\nDIFFICULTY REQUIREMENT: Hard / Challenging. Focus on nuanced, analytical details and deeper comprehension."
+
     return MULTIPLE_CHOICE_PROMPT.format(
         context=context,
         count=count,
         language=language,
-    )
+    ) + diff_instruction

@@ -3,3 +3,8 @@ langchain-text-splitters
 streamlit
 ollama
 numpy
+datasets
+huggingface_hub
+fastapi
+python-multipart
+uvicorn

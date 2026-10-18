@@ -206,9 +206,19 @@ def _select_chunk_groups(chunks: list, num_questions: int) -> list[list]:
     return groups
 
 
-def _call_llm(context: str, count: int, language: str) -> list[dict]:
+def _call_llm(
+    context: str,
+    count: int,
+    language: str,
+    difficulty: str = "orta",
+) -> list[dict]:
     """Tek bir LLM çağrısı yapıp geçerli soruları döner."""
-    prompt = build_quiz_prompt(context=context, count=count, language=language)
+    prompt = build_quiz_prompt(
+        context=context,
+        count=count,
+        language=language,
+        difficulty=difficulty,
+    )
     system = build_system_prompt(language)
 
     # Kalite filtresi bozuk soruları atacağı için fazladan soru iste
@@ -219,7 +229,7 @@ def _call_llm(context: str, count: int, language: str) -> list[dict]:
         try:
             logger.info(
                 f"LLM çağrısı deneme {attempt + 1}/{max_retries} "
-                f"(model: {LLM_MODEL}, soru: {request_count}, dil: {language})"
+                f"(model: {LLM_MODEL}, soru: {request_count}, dil: {language}, zorluk: {difficulty})"
             )
 
             response = ollama_client.chat(
@@ -259,15 +269,22 @@ def _call_llm(context: str, count: int, language: str) -> list[dict]:
     return []
 
 
-def generate_quiz(chunks: list, num_questions: int = 5) -> list[dict]:
+def generate_quiz(
+    chunks: list,
+    num_questions: int = 5,
+    difficulty: str = "orta",
+    question_type: str = "multiple_choice",
+) -> list[dict]:
     """
     Chunk'lardan çoktan seçmeli quiz soruları üretir.
-    Tüm PDF'i kapsayacak şekilde chunk gruplarına böler ve
+    Tüm PDF'i veya metni kapsayacak şekilde chunk gruplarına böler ve
     her gruptan orantılı soru üretir.
 
     Args:
         chunks: Metin chunk'ları listesi (str veya dict with "text" and "source_pages")
         num_questions: Üretilecek toplam soru sayısı
+        difficulty: Zorluk derecesi ("kolay", "orta", "zor")
+        question_type: Soru türü ("multiple_choice")
 
     Returns:
         [{"question": "...", "options": [...], "correct_answer": "A",
@@ -282,7 +299,7 @@ def generate_quiz(chunks: list, num_questions: int = 5) -> list[dict]:
     sample_texts = [_get_chunk_text(c) for c in chunks[:3]]
     full_sample = " ".join(sample_texts)
     detected_lang = detect_language(full_sample)
-    logger.info(f"Algılanan dil: {detected_lang}")
+    logger.info(f"Algılanan dil: {detected_lang}, zorluk: {difficulty}")
     logger.info(f"Toplam chunk sayısı: {len(chunks)}, hedef soru: {num_questions}")
 
     groups = _select_chunk_groups(chunks, num_questions)
@@ -306,9 +323,16 @@ def generate_quiz(chunks: list, num_questions: int = 5) -> list[dict]:
             f"sayfalar: {source_pages}"
         )
 
-        questions = _call_llm(context, count, detected_lang)
+        questions = _call_llm(context, count, detected_lang, difficulty=difficulty)
+        source_chapter = next((c.get("source_chapter") for c in group if isinstance(c, dict) and c.get("source_chapter")), None)
+        progress_percent = next((c.get("progress_percent") for c in group if isinstance(c, dict) and c.get("progress_percent") is not None), None)
+
         for q in questions:
             q["source_pages"] = source_pages
+            if source_chapter:
+                q["source_chapter"] = source_chapter
+            if progress_percent is not None:
+                q["progress_percent"] = progress_percent
         all_questions.extend(questions)
 
     if not all_questions:
@@ -322,3 +346,4 @@ def generate_quiz(chunks: list, num_questions: int = 5) -> list[dict]:
 
     logger.info(f"Toplam {len(result)} soru üretildi (hedef: {num_questions})")
     return result
+

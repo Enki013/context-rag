@@ -15,8 +15,12 @@ services:
       - "8501:8501"
     volumes:
       - app_data:/app/data
+      - dataset_cache:/app/data/dataset_cache
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+      # HuggingFace dataset cache — public datasets, token gerekmez
+      - HF_DATASETS_CACHE=/app/data/dataset_cache/hf_cache
+      - TOKENIZERS_PARALLELISM=false
     depends_on:
       - ollama
     restart: unless-stopped
@@ -24,3 +28,4 @@ services:
 volumes:
   ollama_data:
   app_data:
+  dataset_cache:

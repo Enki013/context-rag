@@ -21,9 +21,13 @@ env/
 .AppleDouble
 .LSOverride
 
-# Data & uploads (user files, generated DB)
+.pytest_cache/
+
+# Data & uploads (user files, generated DB, cached books)
 data/uploads/
 data/chroma_db/
+data/books/
+data/dataset_cache/
 
 # Environment variables
 .env
