@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.contextrag.quizapp.data.BookItem
 import com.contextrag.quizapp.data.ChapterItem
+import com.contextrag.quizapp.ui.theme.CacheHitGreen
 import com.contextrag.quizapp.viewmodel.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -120,18 +121,34 @@ fun BooksScreen(
                 ) {
                     ListItem(
                         headlineContent = {
-                            Text(
-                                text = book.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = book.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                if (book.isCachedLocally) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "⚡ Hazır",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = CacheHitGreen,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
                         },
                         supportingContent = {
-                            Column {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
-                                    text = book.author ?: "Bilinmiyor",
+                                    text = "${book.author ?: "Bilinmiyor"} • ID: #${book.bookId}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

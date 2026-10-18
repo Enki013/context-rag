@@ -208,6 +208,14 @@ def search_books(query: str, limit: int = 20) -> list[dict]:
     except Exception as e:
         logger.error(f"Arama sırasında SQLite hatası: {e}", exc_info=True)
 
+    # Yerel diskte hazır/indirilmiş olanları ve kanonik ana edisyonları öne al
+    def _rank_book(b):
+        local_path = os.path.join(BOOKS_DIR, f"{b['book_id']}.txt")
+        is_cached = os.path.isfile(local_path) and os.path.getsize(local_path) > 100
+        numeric_id = int(b["book_id"]) if b["book_id"].isdigit() else 999999
+        return (0 if is_cached else 1, numeric_id)
+
+    results.sort(key=_rank_book)
     logger.info(f"Yerel arama: '{query}' → {len(results)} kitap bulundu.")
     return results
 

@@ -21,6 +21,16 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
     private val gson = Gson()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+    private fun extractErrorMessage(response: okhttp3.Response): String {
+        return try {
+            val errorBody = response.body?.string() ?: ""
+            val json = org.json.JSONObject(errorBody)
+            json.optString("detail", "HTTP ${response.code}: ${response.message}")
+        } catch (_: Exception) {
+            "HTTP ${response.code}: ${response.message}"
+        }
+    }
+
     suspend fun checkHealth(): Result<HealthResponse> = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
@@ -30,7 +40,7 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(IOException("HTTP ${response.code}: ${response.message}"))
+                    return@withContext Result.failure(IOException(extractErrorMessage(response)))
                 }
                 val body = response.body?.string() ?: ""
                 val data = gson.fromJson(body, HealthResponse::class.java)
@@ -48,7 +58,7 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(IOException("HTTP ${response.code}: ${response.message}"))
+                    return@withContext Result.failure(IOException(extractErrorMessage(response)))
                 }
                 val body = response.body?.string() ?: ""
                 val data = gson.fromJson(body, BookSearchResponse::class.java)
@@ -66,7 +76,7 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(IOException("HTTP ${response.code}: ${response.message}"))
+                    return@withContext Result.failure(IOException(extractErrorMessage(response)))
                 }
                 val body = response.body?.string() ?: ""
                 val data = gson.fromJson(body, BookChaptersResponse::class.java)
@@ -90,7 +100,7 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(IOException("HTTP ${response.code}: ${response.message}"))
+                    return@withContext Result.failure(IOException(extractErrorMessage(response)))
                 }
                 val body = response.body?.string() ?: ""
                 val data = gson.fromJson(body, ServeQuizResponse::class.java)
@@ -112,7 +122,7 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(IOException("HTTP ${response.code}: ${response.message}"))
+                    return@withContext Result.failure(IOException(extractErrorMessage(response)))
                 }
                 val respBody = response.body?.string() ?: ""
                 val data = gson.fromJson(respBody, EvaluationResponse::class.java)

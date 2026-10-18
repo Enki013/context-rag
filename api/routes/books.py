@@ -317,7 +317,10 @@ def get_book_chapters_endpoint(book_id: str):
             chapters=chapter_items,
         )
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Kitap metnine ulaşılamadı (ID: {book_id})")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Kitap metnine ulaşılamadı (ID: {book_id}). Bu Gutenberg eseri sesli kitap (audiobook) veya desteklenmeyen formatta olabilir. Lütfen metin formatındaki bir kitabı seçin (örn: Frankenstein için ID 84).",
+        )
     except Exception as e:
         logger.error(f"Bölümler çıkarılırken hata oluştu ({book_id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Bölümler işlenirken hata oluştu: {e}")
