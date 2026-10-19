@@ -161,19 +161,37 @@ def search_books(query: str, limit: int = 20) -> list[dict]:
                     ORDER BY rank
                     LIMIT ?
                 """
-                cur.execute(sql, (fts_query, limit))
+                cur.execute(sql, (fts_query, limit * 2))
                 rows = cur.fetchall()
                 for r in rows:
+                    tit = r[1] or ""
+                    auth = r[2] or "Bilinmiyor"
+                    subj = r[3] or ""
+                    # Müzik, ses kayıtları ve sesli kitapları filtrele
+                    sub_low = subj.lower()
+                    auth_low = auth.lower()
+                    if (
+                        "sound recording" in sub_low
+                        or "popular music" in sub_low
+                        or "audio book" in sub_low
+                        or "songs and music" in sub_low
+                        or "[performer]" in auth_low
+                        or "[composer]" in auth_low
+                        or "midi file" in tit.lower()
+                    ):
+                        continue
                     results.append(
                         {
                             "book_id": str(r[0]),
-                            "title": r[1],
-                            "author": r[2] or "Bilinmiyor",
-                            "subjects": r[3] or "",
+                            "title": tit,
+                            "author": auth,
+                            "subjects": subj,
                             "bookshelves": r[4] or "",
                             "language": r[5] or "en",
                         }
                     )
+                    if len(results) >= limit:
+                        break
 
             # FTS sonuç vermediyse veya yetersizse standart LIKE aramasıyla destekle
             if len(results) < limit:
@@ -187,17 +205,32 @@ def search_books(query: str, limit: int = 20) -> list[dict]:
                     WHERE title LIKE ? OR author LIKE ?
                     LIMIT ?
                 """
-                cur.execute(like_sql, (like_pattern, like_pattern, needed * 2))
+                cur.execute(like_sql, (like_pattern, like_pattern, needed * 3))
                 for r in cur.fetchall():
                     b_id = str(r[0])
+                    tit = r[1] or ""
+                    auth = r[2] or "Bilinmiyor"
+                    subj = r[3] or ""
+                    sub_low = subj.lower()
+                    auth_low = auth.lower()
+                    if (
+                        "sound recording" in sub_low
+                        or "popular music" in sub_low
+                        or "audio book" in sub_low
+                        or "songs and music" in sub_low
+                        or "[performer]" in auth_low
+                        or "[composer]" in auth_low
+                        or "midi file" in tit.lower()
+                    ):
+                        continue
                     if b_id not in seen_ids:
                         seen_ids.add(b_id)
                         results.append(
                             {
                                 "book_id": b_id,
-                                "title": r[1],
-                                "author": r[2] or "Bilinmiyor",
-                                "subjects": r[3] or "",
+                                "title": tit,
+                                "author": auth,
+                                "subjects": subj,
                                 "bookshelves": r[4] or "",
                                 "language": r[5] or "en",
                             }

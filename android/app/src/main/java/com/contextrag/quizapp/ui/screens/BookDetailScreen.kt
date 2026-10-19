@@ -10,13 +10,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.contextrag.quizapp.data.ChapterItem
@@ -46,6 +49,8 @@ fun BookDetailScreen(
         return
     }
 
+    val hasChapters = state.chaptersData?.chapters?.isNotEmpty() == true
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -74,95 +79,97 @@ fun BookDetailScreen(
             )
         },
         bottomBar = {
-            // Sabit Alt Panel: Quiz Ayarları & Başlat Butonu
-            Surface(
-                tonalElevation = 6.dp,
-                shadowElevation = 8.dp,
-                shape = MaterialTheme.shapes.extraLarge,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            // Yalnızca bölümler başarıyla yüklendiğinde ve mevcut olduğunda quiz başlatma panelini göster
+            if (hasChapters) {
+                Surface(
+                    tonalElevation = 6.dp,
+                    shadowElevation = 8.dp,
+                    shape = MaterialTheme.shapes.extraLarge,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = state.selectedChapter?.title ?: "Lütfen Bir Bölüm Seçin",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (state.selectedChapter != null) {
-                            SuggestionChip(
-                                onClick = {},
-                                label = { Text("Havuz: ${state.selectedChapter.poolCount}") },
-                                icon = { Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                                colors = SuggestionChipDefaults.suggestionChipColors(
-                                    containerColor = CacheHitGreenContainer,
-                                    labelColor = OnCacheHitGreen
-                                ),
-                                border = null
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = state.selectedChapter?.title ?: "Lütfen Bir Bölüm Seçin",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
                             )
-                        }
-                    }
-
-                    // Zorluk & Soru Sayısı Seçenekleri
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Zorluk
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            listOf("kolay", "orta", "zor").forEach { diff ->
-                                FilterChip(
-                                    selected = state.quizDifficulty == diff,
-                                    onClick = { onSetDifficulty(diff) },
-                                    label = { Text(diff.replaceFirstChar { it.uppercase() }) }
+                            if (state.selectedChapter != null) {
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text("Havuz: ${state.selectedChapter.poolCount}") },
+                                    icon = { Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                                    colors = SuggestionChipDefaults.suggestionChipColors(
+                                        containerColor = CacheHitGreenContainer,
+                                        labelColor = OnCacheHitGreen
+                                    ),
+                                    border = null
                                 )
                             }
                         }
 
-                        // Soru Sayısı
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            listOf(3, 5, 10).forEach { cnt ->
-                                FilterChip(
-                                    selected = state.quizCount == cnt,
-                                    onClick = { onSetCount(cnt) },
-                                    label = { Text("$cnt") }
-                                )
+                        // Zorluk & Soru Sayısı Seçenekleri
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Zorluk
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf("kolay", "orta", "zor").forEach { diff ->
+                                    FilterChip(
+                                        selected = state.quizDifficulty == diff,
+                                        onClick = { onSetDifficulty(diff) },
+                                        label = { Text(diff.replaceFirstChar { it.uppercase() }) }
+                                    )
+                                }
+                            }
+
+                            // Soru Sayısı
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf(3, 5, 10).forEach { cnt ->
+                                    FilterChip(
+                                        selected = state.quizCount == cnt,
+                                        onClick = { onSetCount(cnt) },
+                                        label = { Text("$cnt") }
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    // Quiz Başlat Butonu
-                    Button(
-                        onClick = onStartQuiz,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = state.selectedChapter != null && !state.isLoadingQuiz,
-                        shape = CircleShape
-                    ) {
-                        if (state.isLoadingQuiz) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Soru Bankasından Çekiliyor...")
-                        } else {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Bölüm Quizini Başlat")
+                        // Quiz Başlat Butonu
+                        Button(
+                            onClick = onStartQuiz,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = state.selectedChapter != null && !state.isLoadingQuiz,
+                            shape = CircleShape
+                        ) {
+                            if (state.isLoadingQuiz) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Soru Bankasından Çekiliyor...")
+                            } else {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Bölüm Quizini Başlat")
+                            }
                         }
                     }
                 }
@@ -175,7 +182,7 @@ fun BookDetailScreen(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
+            contentPadding = PaddingValues(top = 8.dp, bottom = if (hasChapters) 16.dp else 48.dp)
         ) {
             // Kitap Başlık & Bilgi Kartı
             item {
@@ -212,6 +219,7 @@ fun BookDetailScreen(
 
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(top = 4.dp)
                         ) {
                             if (book.isCachedLocally) {
@@ -225,98 +233,221 @@ fun BookDetailScreen(
                                     border = null
                                 )
                             }
-                            SuggestionChip(
-                                onClick = {},
-                                label = { Text("${state.chaptersData?.totalChapters ?: 0} Bölüm") },
-                                icon = { Icon(Icons.Default.AutoStories, contentDescription = null, modifier = Modifier.size(14.dp)) }
+
+                            // Duruma göre rozet göster
+                            if (state.isLoadingChapters) {
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text("Taranıyor...") },
+                                    icon = {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(12.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
+                                )
+                            } else if (state.chaptersError != null) {
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text("⚠️ Metin Erişilemedi") },
+                                    colors = SuggestionChipDefaults.suggestionChipColors(
+                                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                                        labelColor = MaterialTheme.colorScheme.onErrorContainer
+                                    ),
+                                    border = null
+                                )
+                            } else if (state.chaptersData != null) {
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text("${state.chaptersData.totalChapters} Bölüm") },
+                                    icon = { Icon(Icons.Default.AutoStories, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Durum 1: Yükleniyor Göstergesi
+            if (state.isLoadingChapters) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator()
+                            Text(
+                                text = "Kitap metni indiriliyor ve bölümler ayrıştırılıyor...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
                 }
             }
 
-            item {
-                Text(
-                    text = "Bölüm Seçimi & Okuma Durumu",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-
-            // Yükleniyor durumu
-            if (state.isLoadingChapters) {
+            // Durum 2: Hata Durumu (In-Screen Error Card)
+            if (state.chaptersError != null && !state.isLoadingChapters) {
                 item {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            CircularProgressIndicator()
-                            Text("Bölümler taranıyor...", style = MaterialTheme.typography.bodySmall)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = "Kitap Metnine Ulaşılamadı",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                text = state.chaptersError,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = onRefresh,
+                                    modifier = Modifier.weight(1f),
+                                    shape = CircleShape
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Tekrar Dene")
+                                }
+                                Button(
+                                    onClick = onBack,
+                                    modifier = Modifier.weight(1f),
+                                    shape = CircleShape
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Kitap Ara")
+                                }
+                            }
                         }
                     }
                 }
-            } else if (state.chaptersData != null) {
-                items(state.chaptersData.chapters) { chapter ->
-                    val isSelected = state.selectedChapter?.chapterIndex == chapter.chapterIndex
-                    OutlinedCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelectChapter(chapter) },
-                        shape = MaterialTheme.shapes.medium,
-                        border = BorderStroke(
-                            width = if (isSelected) 2.dp else 1.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                        ),
-                        colors = CardDefaults.outlinedCardColors(
-                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                            else MaterialTheme.colorScheme.surface
-                        )
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+            }
+
+            // Durum 3: Bölümler Başarıyla Yüklendi
+            if (state.chaptersData != null && !state.isLoadingChapters) {
+                item {
+                    Text(
+                        text = "Bölüm Seçimi & Okuma Durumu",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                if (state.chaptersData.chapters.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Box(modifier = Modifier.padding(24.dp), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "Bu kitap için ayrıştırılabilir bölüm bulunamadı.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(state.chaptersData.chapters) { chapter ->
+                        val isSelected = state.selectedChapter?.chapterIndex == chapter.chapterIndex
+                        OutlinedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectChapter(chapter) },
+                            shape = MaterialTheme.shapes.medium,
+                            border = BorderStroke(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            colors = CardDefaults.outlinedCardColors(
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                else MaterialTheme.colorScheme.surface
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    RadioButton(
-                                        selected = isSelected,
-                                        onClick = { onSelectChapter(chapter) }
-                                    )
-                                    Text(
-                                        text = chapter.title,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = { onSelectChapter(chapter) }
+                                        )
+                                        Text(
+                                            text = chapter.title,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    AssistChip(
+                                        onClick = { onSelectChapter(chapter) },
+                                        label = { Text("Havuz: ${chapter.poolCount}") },
+                                        leadingIcon = { Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(14.dp)) }
                                     )
                                 }
 
-                                AssistChip(
-                                    onClick = { onSelectChapter(chapter) },
-                                    label = { Text("Havuz: ${chapter.poolCount}") },
-                                    leadingIcon = { Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(14.dp)) }
-                                )
-                            }
-
-                            // İlerleme Çubuğu
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(start = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                LinearProgressIndicator(
-                                    progress = (chapter.progressPercent / 100f).coerceIn(0f, 1f),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = "%${chapter.progressPercent.toInt()}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
+                                // İlerleme Çubuğu
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    LinearProgressIndicator(
+                                        progress = (chapter.progressPercent / 100f).coerceIn(0f, 1f),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = "%${chapter.progressPercent.toInt()}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
                             }
                         }
                     }

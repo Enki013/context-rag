@@ -142,6 +142,22 @@ def build_catalog_database(csv_bytes: bytes, db_path: str = CATALOG_DB_PATH) -> 
         if doc_type != "Text":
             continue  # Sesli kitapları ve diğer formatları atla
 
+        # Müzik, ses kayıtları ve sesli kitapları atla
+        sub_lower = (row.get("Subjects") or "").lower()
+        auth_lower = (row.get("Authors") or row.get("Author") or "").lower()
+        title_lower = (row.get("Title") or "").lower()
+        if (
+            "sound recording" in sub_lower
+            or "popular music" in sub_lower
+            or "audio book" in sub_lower
+            or "songs and music" in sub_lower
+            or "[performer]" in auth_lower
+            or "[composer]" in auth_lower
+            or "midi file" in title_lower
+            or "(audiofile)" in title_lower
+        ):
+            continue
+
         book_id = (row.get("Text#") or row.get("Link", "").split("/")[-1]).strip()
         title = (row.get("Title") or "").strip()
         author = (row.get("Authors") or row.get("Author") or "").strip()

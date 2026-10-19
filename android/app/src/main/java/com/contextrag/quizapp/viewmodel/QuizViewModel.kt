@@ -40,6 +40,7 @@ data class UiState(
     val chaptersData: BookChaptersResponse? = null,
     val selectedChapter: ChapterItem? = null,
     val isLoadingChapters: Boolean = false,
+    val chaptersError: String? = null,
 
     // Quiz Serving
     val quizDifficulty: String = "orta",
@@ -83,7 +84,8 @@ class QuizViewModel : ViewModel() {
                     currentScreen = AppScreen.LIBRARY,
                     selectedBook = null,
                     chaptersData = null,
-                    selectedChapter = null
+                    selectedChapter = null,
+                    chaptersError = null
                 )
             }
             AppScreen.QUIZ -> {
@@ -118,6 +120,7 @@ class QuizViewModel : ViewModel() {
             selectedBook = null,
             chaptersData = null,
             selectedChapter = null,
+            chaptersError = null,
             currentQuiz = null,
             evaluationResult = null,
             selectedAnswers = emptyMap()
@@ -191,6 +194,7 @@ class QuizViewModel : ViewModel() {
             selectedBook = book,
             chaptersData = null,
             selectedChapter = null,
+            chaptersError = null,
             currentQuiz = null,
             evaluationResult = null,
             selectedAnswers = emptyMap(),
@@ -206,19 +210,22 @@ class QuizViewModel : ViewModel() {
 
     private fun fetchChapters(bookId: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoadingChapters = true)
+            _uiState.value = _uiState.value.copy(isLoadingChapters = true, chaptersError = null)
             apiClient.getBookChapters(bookId).fold(
                 onSuccess = { data ->
                     val firstChapter = data.chapters.firstOrNull()
                     _uiState.value = _uiState.value.copy(
                         chaptersData = data,
                         selectedChapter = firstChapter,
-                        isLoadingChapters = false
+                        isLoadingChapters = false,
+                        chaptersError = null
                     )
                 },
                 onFailure = { err ->
-                    _uiState.value = _uiState.value.copy(isLoadingChapters = false)
-                    _snackbarEvent.emit("Bölümler alınamadı: ${err.localizedMessage}")
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingChapters = false,
+                        chaptersError = err.localizedMessage ?: "Bölümler alınamadı"
+                    )
                 }
             )
         }
