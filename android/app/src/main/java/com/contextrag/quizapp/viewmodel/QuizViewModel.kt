@@ -16,7 +16,16 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+enum class AppScreen {
+    LIBRARY,        // Kitap Arama & Katalog
+    BOOK_DETAIL,    // Seçili Kitap, Bölümler & Quiz Ayarları
+    QUIZ,           // Aktif Çoktan Seçmeli Test
+    RESULT,         // Sınav Sonucu & Doğru/Yanlış Analizi
+    SETTINGS        // Sunucu Bağlantısı & Sağlık Durumu
+}
+
 data class UiState(
+    val currentScreen: AppScreen = AppScreen.LIBRARY,
     val baseUrl: String = "http://10.0.2.2:8000",
     val health: HealthResponse? = null,
     val isCheckingHealth: Boolean = false,
@@ -59,6 +68,72 @@ class QuizViewModel : ViewModel() {
         checkHealth()
         searchBooks(_uiState.value.searchQuery)
     }
+
+    // ─── Navigasyon Yönetimi ──────────────────────────────────────────────────
+
+    fun navigateTo(screen: AppScreen) {
+        _uiState.value = _uiState.value.copy(currentScreen = screen)
+    }
+
+    fun navigateBack() {
+        val curr = _uiState.value.currentScreen
+        when (curr) {
+            AppScreen.BOOK_DETAIL -> {
+                _uiState.value = _uiState.value.copy(
+                    currentScreen = AppScreen.LIBRARY,
+                    selectedBook = null,
+                    chaptersData = null,
+                    selectedChapter = null
+                )
+            }
+            AppScreen.QUIZ -> {
+                // Sınavdan çıkıp bölümlere dön
+                _uiState.value = _uiState.value.copy(
+                    currentScreen = AppScreen.BOOK_DETAIL,
+                    currentQuiz = null,
+                    selectedAnswers = emptyMap()
+                )
+            }
+            AppScreen.RESULT -> {
+                // Sonuç ekranından bölümlere dön
+                _uiState.value = _uiState.value.copy(
+                    currentScreen = AppScreen.BOOK_DETAIL,
+                    currentQuiz = null,
+                    evaluationResult = null,
+                    selectedAnswers = emptyMap()
+                )
+            }
+            AppScreen.SETTINGS -> {
+                _uiState.value = _uiState.value.copy(currentScreen = AppScreen.LIBRARY)
+            }
+            AppScreen.LIBRARY -> {
+                // Kök ekranda bir şey yapma
+            }
+        }
+    }
+
+    fun returnToLibrary() {
+        _uiState.value = _uiState.value.copy(
+            currentScreen = AppScreen.LIBRARY,
+            selectedBook = null,
+            chaptersData = null,
+            selectedChapter = null,
+            currentQuiz = null,
+            evaluationResult = null,
+            selectedAnswers = emptyMap()
+        )
+    }
+
+    fun returnToChapters() {
+        _uiState.value = _uiState.value.copy(
+            currentScreen = AppScreen.BOOK_DETAIL,
+            currentQuiz = null,
+            evaluationResult = null,
+            selectedAnswers = emptyMap()
+        )
+    }
+
+    // ─── API İşlemleri ────────────────────────────────────────────────────────
 
     fun updateBaseUrl(newUrl: String) {
         val trimmed = newUrl.trimEnd('/')
@@ -118,8 +193,14 @@ class QuizViewModel : ViewModel() {
             selectedChapter = null,
             currentQuiz = null,
             evaluationResult = null,
-            selectedAnswers = emptyMap()
+            selectedAnswers = emptyMap(),
+            currentScreen = AppScreen.BOOK_DETAIL
         )
+        fetchChapters(book.bookId)
+    }
+
+    fun refreshChapters() {
+        val book = _uiState.value.selectedBook ?: return
         fetchChapters(book.bookId)
     }
 
@@ -185,7 +266,8 @@ class QuizViewModel : ViewModel() {
                 onSuccess = { quizResp ->
                     _uiState.value = _uiState.value.copy(
                         currentQuiz = quizResp,
-                        isLoadingQuiz = false
+                        isLoadingQuiz = false,
+                        currentScreen = AppScreen.QUIZ
                     )
                     if (quizResp.cacheHit) {
                         _snackbarEvent.emit("⚡ 0ms Soru Bankası Havuzundan Getirildi (Cache Hit)!")
@@ -241,7 +323,8 @@ class QuizViewModel : ViewModel() {
                 onSuccess = { res ->
                     _uiState.value = _uiState.value.copy(
                         evaluationResult = res,
-                        isEvaluating = false
+                        isEvaluating = false,
+                        currentScreen = AppScreen.RESULT
                     )
                 },
                 onFailure = { err ->
@@ -257,7 +340,8 @@ class QuizViewModel : ViewModel() {
             currentQuiz = null,
             evaluationResult = null,
             selectedAnswers = emptyMap(),
-            currentQuestionIndex = 0
+            currentQuestionIndex = 0,
+            currentScreen = AppScreen.BOOK_DETAIL
         )
     }
 }

@@ -5,14 +5,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -22,8 +19,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.contextrag.quizapp.data.BookItem
-import com.contextrag.quizapp.data.ChapterItem
 import com.contextrag.quizapp.ui.theme.CacheHitGreen
+import com.contextrag.quizapp.ui.theme.CacheHitGreenContainer
+import com.contextrag.quizapp.ui.theme.OnCacheHitGreen
 import com.contextrag.quizapp.viewmodel.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,11 +30,7 @@ fun BooksScreen(
     state: UiState,
     onSearchChange: (String) -> Unit,
     onSearchSubmit: (String) -> Unit,
-    onSelectBook: (BookItem) -> Unit,
-    onSelectChapter: (ChapterItem) -> Unit,
-    onSetDifficulty: (String) -> Unit,
-    onSetCount: (Int) -> Unit,
-    onStartQuiz: () -> Unit
+    onSelectBook: (BookItem) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -45,7 +39,7 @@ fun BooksScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 96.dp)
     ) {
-        // M3 Arama Kutusu
+        // M3 Arama Kutusu & Hızlı Filtreler
         item {
             OutlinedTextField(
                 value = state.searchQuery,
@@ -68,7 +62,7 @@ fun BooksScreen(
                 )
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Hızlı Arama Önerileri (M3 Filter Chips)
             val quickQueries = listOf("Sherlock Holmes", "Jane Austen", "Frankenstein", "Nutuk", "Felsefe")
@@ -89,8 +83,23 @@ fun BooksScreen(
         // Yükleniyor Göstergesi
         if (state.isSearching) {
             item {
-                Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator()
+                        Text(
+                            text = "Gutenberg ve yerel kütüphane taranıyor...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -98,57 +107,59 @@ fun BooksScreen(
         // Kitap Arama Sonuçları
         if (state.searchResults.isNotEmpty()) {
             item {
-                Text(
-                    text = "Arama Sonuçları (${state.searchResults.size})",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Bulunan Kitaplar",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Badge(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ) {
+                        Text(
+                            text = "${state.searchResults.size} Kitap",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             }
 
             items(state.searchResults) { book ->
-                val isSelected = state.selectedBook?.bookId == book.bookId
                 ElevatedCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onSelectBook(book) },
                     colors = CardDefaults.elevatedCardColors(
-                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surface
+                        containerColor = MaterialTheme.colorScheme.surface
                     ),
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp),
-                    shape = MaterialTheme.shapes.medium
+                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+                    shape = MaterialTheme.shapes.large
                 ) {
                     ListItem(
                         headlineContent = {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = book.title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                if (book.isCachedLocally) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "⚡ Hazır",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = CacheHitGreen,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
+                            Text(
+                                text = book.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         },
                         supportingContent = {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Column(
+                                modifier = Modifier.padding(top = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                                 Text(
-                                    text = "${book.author ?: "Bilinmiyor"} • ID: #${book.bookId}",
+                                    text = "${book.author ?: "Bilinmeyen Yazar"} • ID: #${book.bookId}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -161,18 +172,40 @@ fun BooksScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
+                                if (book.isCachedLocally) {
+                                    SuggestionChip(
+                                        onClick = { onSelectBook(book) },
+                                        label = { Text("⚡ Cihazda Hazır (0ms)") },
+                                        colors = SuggestionChipDefaults.suggestionChipColors(
+                                            containerColor = CacheHitGreenContainer,
+                                            labelColor = OnCacheHitGreen
+                                        ),
+                                        border = null,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
                             }
                         },
                         leadingContent = {
-                            FilledTonalIconButton(onClick = { onSelectBook(book) }) {
-                                Icon(Icons.Default.MenuBook, contentDescription = null)
+                            FilledTonalIconButton(
+                                onClick = { onSelectBook(book) },
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = if (book.isCachedLocally) CacheHitGreenContainer
+                                    else MaterialTheme.colorScheme.secondaryContainer
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = if (book.isCachedLocally) Icons.Default.AutoStories else Icons.Default.MenuBook,
+                                    contentDescription = null,
+                                    tint = if (book.isCachedLocally) OnCacheHitGreen else MaterialTheme.colorScheme.onSecondaryContainer
+                                )
                             }
                         },
                         trailingContent = {
-                            if (isSelected) {
+                            IconButton(onClick = { onSelectBook(book) }) {
                                 Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = "Seçildi",
+                                    Icons.Default.ChevronRight,
+                                    contentDescription = "Bölümleri Gör",
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -180,143 +213,29 @@ fun BooksScreen(
                     )
                 }
             }
-        }
-
-        // Seçili Kitap Bölüm Listesi & Quiz Parametreleri
-        state.selectedBook?.let { selected ->
+        } else if (!state.isSearching) {
             item {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                Text(
-                    text = "📖 ${selected.title} - Bölümler",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            if (state.isLoadingChapters) {
-                item {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-            } else if (state.chaptersData != null) {
-                items(state.chaptersData.chapters) { chapter ->
-                    val isChSelected = state.selectedChapter?.chapterIndex == chapter.chapterIndex
-                    OutlinedCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelectChapter(chapter) },
-                        colors = CardDefaults.outlinedCardColors(
-                            containerColor = if (isChSelected) MaterialTheme.colorScheme.secondaryContainer
-                            else MaterialTheme.colorScheme.surface
-                        ),
-                        shape = MaterialTheme.shapes.medium
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 64.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = chapter.title,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                AssistChip(
-                                    onClick = { },
-                                    label = { Text("Havuz: ${chapter.poolCount}") },
-                                    leadingIcon = { Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // İlerleme Çubuğu (%0 - %100)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                LinearProgressIndicator(
-                                    progress = (chapter.progressPercent / 100f).coerceIn(0f, 1f),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = "%${chapter.progressPercent.toInt()}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Zorluk ve Soru Sayısı Ayarları
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                        shape = MaterialTheme.shapes.large
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(
-                                text = "Quiz Ayarları",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            // Zorluk Seçimi
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Zorluk:", style = MaterialTheme.typography.bodyMedium)
-                                listOf("kolay", "orta", "zor").forEach { diff ->
-                                    FilterChip(
-                                        selected = state.quizDifficulty == diff,
-                                        onClick = { onSetDifficulty(diff) },
-                                        label = { Text(diff.replaceFirstChar { it.uppercase() }) }
-                                    )
-                                }
-                            }
-
-                            // Soru Sayısı
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Soru Sayısı:", style = MaterialTheme.typography.bodyMedium)
-                                listOf(3, 5, 10).forEach { cnt ->
-                                    FilterChip(
-                                        selected = state.quizCount == cnt,
-                                        onClick = { onSetCount(cnt) },
-                                        label = { Text("$cnt Soru") }
-                                    )
-                                }
-                            }
-
-                            // Başlat Butonu
-                            Button(
-                                onClick = onStartQuiz,
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = state.selectedChapter != null && !state.isLoadingQuiz,
-                                shape = CircleShape
-                            ) {
-                                if (state.isLoadingQuiz) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                        strokeWidth = 2.dp
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Soru Bankasından Çekiliyor...")
-                                } else {
-                                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Bölüm Quizini Başlat")
-                                }
-                            }
-                        }
+                        Icon(
+                            Icons.Default.MenuBook,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.outlineVariant
+                        )
+                        Text(
+                            text = "Aramak için bir anahtar kelime girin",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
