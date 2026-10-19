@@ -354,6 +354,8 @@ def extract_chapters(raw_text: str) -> list[dict]:
                 "end_char": end_c,
                 "char_count": len(chunk_text),
                 "progress_percent": round((start_c / total_len) * 100, 1),
+                "raw_text": chunk_text,
+                "text": chunk_text,
             })
         return chapters
 
@@ -369,6 +371,8 @@ def extract_chapters(raw_text: str) -> list[dict]:
             "end_char": end_c,
             "char_count": len(chunk_text),
             "progress_percent": round((start_c / total_len) * 100, 1),
+            "raw_text": chunk_text,
+            "text": chunk_text,
         })
 
     return chapters

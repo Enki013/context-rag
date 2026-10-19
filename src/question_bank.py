@@ -335,23 +335,48 @@ def serve_chapter_quiz(
         # Cache Miss: Bölüm metnini bul ve LLM ile üret
         ch = get_chapter(book_id, chapter_index, db_path=db_path)
         if not ch or not ch.get("raw_text", "").strip():
-            # Gutenberg kataloğunda var mı kontrol et
-            from src.dataset_search import get_book_chapters as get_gutenberg_chapters
-            try:
-                g_info = get_gutenberg_chapters(book_id)
-                g_chapters = g_info.get("chapters", [])
-                if g_chapters:
-                    register_book_content(
-                        book_id=book_id,
-                        title=g_info.get("title", f"Kitap #{book_id}"),
-                        author=g_info.get("author", ""),
-                        source_format="gutenberg",
-                        chapters=g_chapters,
-                        db_path=db_path,
-                    )
-                    ch = get_chapter(book_id, chapter_index, db_path=db_path)
-            except Exception as e:
-                logger.warning(f"Gutenberg fallback hatası: {e}")
+            from config import BOOKS_DIR
+            clean_id = str(book_id).strip("'\"")
+
+            # 1. Öncelik: data/books/{clean_id}.txt yerel dosyasından oku
+            local_path = os.path.join(BOOKS_DIR, f"{clean_id}.txt")
+            if os.path.isfile(local_path) and os.path.getsize(local_path) > 100:
+                try:
+                    with open(local_path, "r", encoding="utf-8", errors="ignore") as f:
+                        full_text = f.read()
+                    from src.dataset_search import extract_chapters
+                    extracted = extract_chapters(full_text)
+                    if extracted:
+                        register_book_content(
+                            book_id=book_id,
+                            title=f"Kitap #{clean_id}",
+                            author="Bilinmiyor",
+                            source_format="gutenberg",
+                            chapters=extracted,
+                            db_path=db_path,
+                        )
+                        ch = get_chapter(book_id, chapter_index, db_path=db_path)
+                except Exception as e:
+                    logger.warning(f"Yerel metinden bölüm çıkarma hatası ({clean_id}): {e}")
+
+            # 2. Öncelik: Gutenberg kataloğundan indir
+            if not ch or not ch.get("raw_text", "").strip():
+                from src.dataset_search import get_book_chapters as get_gutenberg_chapters
+                try:
+                    g_info = get_gutenberg_chapters(clean_id)
+                    g_chapters = g_info.get("chapters", [])
+                    if g_chapters:
+                        register_book_content(
+                            book_id=book_id,
+                            title=g_info.get("title", f"Kitap #{clean_id}"),
+                            author=g_info.get("author", ""),
+                            source_format="gutenberg",
+                            chapters=g_chapters,
+                            db_path=db_path,
+                        )
+                        ch = get_chapter(book_id, chapter_index, db_path=db_path)
+                except Exception as e:
+                    logger.warning(f"Gutenberg fallback hatası ({clean_id}): {e}")
 
         if not ch or not ch.get("raw_text", "").strip():
             raise ValueError(f"Bölüm metni bulunamadı: Kitap {book_id}, Bölüm {chapter_index}")
