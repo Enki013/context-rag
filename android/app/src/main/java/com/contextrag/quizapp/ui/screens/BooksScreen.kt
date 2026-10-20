@@ -1,12 +1,12 @@
 package com.contextrag.quizapp.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MenuBook
@@ -19,9 +19,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.contextrag.quizapp.data.BookItem
+import com.contextrag.quizapp.ui.components.MetricCard
+import com.contextrag.quizapp.ui.components.SectionHeader
+import com.contextrag.quizapp.ui.components.ShimmerCard
+import com.contextrag.quizapp.ui.components.expressiveBounceClick
 import com.contextrag.quizapp.ui.theme.CacheHitGreen
 import com.contextrag.quizapp.ui.theme.CacheHitGreenContainer
+import com.contextrag.quizapp.ui.theme.M3Shapes
 import com.contextrag.quizapp.ui.theme.OnCacheHitGreen
+import com.contextrag.quizapp.ui.theme.titleMediumEmphasized
 import com.contextrag.quizapp.viewmodel.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,14 +38,45 @@ fun BooksScreen(
     onSearchSubmit: (String) -> Unit,
     onSelectBook: (BookItem) -> Unit
 ) {
+    val totalIndexed = state.health?.totalBooks ?: 79446
+    val cachedBooksCount = state.searchResults.count { it.isCachedLocally }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 96.dp)
     ) {
-        // M3 Arama Kutusu & Hızlı Filtreler
+        // 1. M3 Metric Cards Özeti (Personal Records Tarzı)
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                MetricCard(
+                    title = "Katalog",
+                    value = "${totalIndexed / 1000}k+",
+                    badgeText = "FTS5",
+                    note = "İndeksli Kitap",
+                    valueIcon = Icons.Default.MenuBook,
+                    modifier = Modifier.weight(1f)
+                )
+                MetricCard(
+                    title = "Hızlı Servis",
+                    value = "0ms",
+                    badgeText = "Cache",
+                    note = "Hazır Soru Havuzu",
+                    valueIcon = Icons.Default.Bolt,
+                    valueIconTint = CacheHitGreen,
+                    badgeBg = CacheHitGreenContainer,
+                    badgeColor = OnCacheHitGreen,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // 2. M3 Expressive Arama Kutusu & Hızlı Filtreler
         item {
             OutlinedTextField(
                 value = state.searchQuery,
@@ -55,16 +92,18 @@ fun BooksScreen(
                     }
                 },
                 singleLine = true,
-                shape = MaterialTheme.shapes.extraLarge,
+                shape = M3Shapes.CornerExtraLarge,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.6f),
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                 )
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Hızlı Arama Önerileri (M3 Filter Chips)
+            // Hızlı Arama Önerileri (M3 Filter Chips with Expressive Bounce)
             val quickQueries = listOf("Sherlock Holmes", "Jane Austen", "Frankenstein", "Nutuk", "Felsefe")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(quickQueries) { q ->
@@ -74,81 +113,52 @@ fun BooksScreen(
                             onSearchChange(q)
                             onSearchSubmit(q)
                         },
-                        label = { Text(q) }
+                        label = { Text(q) },
+                        shape = M3Shapes.CornerFull,
+                        modifier = Modifier.expressiveBounceClick(scaleDown = 0.94f) {
+                            onSearchChange(q)
+                            onSearchSubmit(q)
+                        }
                     )
                 }
             }
         }
 
-        // Yükleniyor Göstergesi
+        // 3. Arama Yükleniyor Durumu (Smooth Shimmer Placeholders)
         if (state.isSearching) {
             item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(48.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        CircularProgressIndicator()
-                        Text(
-                            text = "Gutenberg ve yerel kütüphane taranıyor...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ShimmerCard(height = 84.dp)
+                    ShimmerCard(height = 84.dp)
+                    ShimmerCard(height = 84.dp)
                 }
             }
         }
 
-        // Kitap Arama Sonuçları
+        // 4. Kitap Arama Sonuçları
         if (state.searchResults.isNotEmpty()) {
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Bulunan Kitaplar",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ) {
-                        Text(
-                            text = "${state.searchResults.size} Kitap",
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
+                SectionHeader(
+                    title = "Bulunan Kitaplar",
+                    badgeText = "${state.searchResults.size} Kitap"
+                )
             }
 
             items(state.searchResults) { book ->
-                ElevatedCard(
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSelectBook(book) },
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
+                        .expressiveBounceClick(scaleDown = 0.97f) { onSelectBook(book) },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                     ),
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-                    shape = MaterialTheme.shapes.large
+                    shape = M3Shapes.CornerLarge
                 ) {
                     ListItem(
                         headlineContent = {
                             Text(
                                 text = book.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleMediumEmphasized,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -173,32 +183,48 @@ fun BooksScreen(
                                     )
                                 }
                                 if (book.isCachedLocally) {
-                                    SuggestionChip(
-                                        onClick = { onSelectBook(book) },
-                                        label = { Text("⚡ Cihazda Hazır (0ms)") },
-                                        colors = SuggestionChipDefaults.suggestionChipColors(
-                                            containerColor = CacheHitGreenContainer,
-                                            labelColor = OnCacheHitGreen
-                                        ),
-                                        border = null,
+                                    Surface(
+                                        shape = M3Shapes.CornerFull,
+                                        color = CacheHitGreenContainer,
                                         modifier = Modifier.padding(top = 2.dp)
-                                    )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Bolt,
+                                                contentDescription = null,
+                                                tint = OnCacheHitGreen,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Text(
+                                                text = "Cihazda Hazır (0ms)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = OnCacheHitGreen,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         },
                         leadingContent = {
-                            FilledTonalIconButton(
-                                onClick = { onSelectBook(book) },
-                                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                    containerColor = if (book.isCachedLocally) CacheHitGreenContainer
-                                    else MaterialTheme.colorScheme.secondaryContainer
-                                )
+                            Surface(
+                                shape = M3Shapes.CornerMedium,
+                                color = if (book.isCachedLocally) CacheHitGreenContainer
+                                else MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.size(44.dp)
                             ) {
-                                Icon(
-                                    imageVector = if (book.isCachedLocally) Icons.Default.AutoStories else Icons.Default.MenuBook,
-                                    contentDescription = null,
-                                    tint = if (book.isCachedLocally) OnCacheHitGreen else MaterialTheme.colorScheme.onSecondaryContainer
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (book.isCachedLocally) Icons.Default.AutoStories else Icons.Default.MenuBook,
+                                        contentDescription = null,
+                                        tint = if (book.isCachedLocally) OnCacheHitGreen else MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
                             }
                         },
                         trailingContent = {
@@ -209,7 +235,10 @@ fun BooksScreen(
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
-                        }
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                        )
                     )
                 }
             }
@@ -218,21 +247,29 @@ fun BooksScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 64.dp),
+                        .padding(top = 48.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(
-                            Icons.Default.MenuBook,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.outlineVariant
-                        )
+                        Surface(
+                            shape = M3Shapes.CornerLarge,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.MenuBook,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(36.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                         Text(
-                            text = "Aramak için bir anahtar kelime girin",
+                            text = "Aramak için bir kitap veya konu seçin",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

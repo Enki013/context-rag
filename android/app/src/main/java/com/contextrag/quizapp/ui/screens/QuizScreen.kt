@@ -1,11 +1,18 @@
 package com.contextrag.quizapp.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -22,9 +29,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.contextrag.quizapp.ui.components.expressiveBounceClick
 import com.contextrag.quizapp.ui.theme.CacheHitGreen
 import com.contextrag.quizapp.ui.theme.CacheHitGreenContainer
+import com.contextrag.quizapp.ui.theme.M3ExpressiveMotion
+import com.contextrag.quizapp.ui.theme.M3Shapes
 import com.contextrag.quizapp.ui.theme.OnCacheHitGreen
+import com.contextrag.quizapp.ui.theme.titleMediumEmphasized
 import com.contextrag.quizapp.viewmodel.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,21 +57,32 @@ fun QuizScreen(
                 .padding(24.dp),
             contentAlignment = Alignment.Center
         ) {
-            ElevatedCard(
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.extraLarge
+                shape = M3Shapes.CornerExtraLarge,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                )
             ) {
                 Column(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Icon(
-                        Icons.Default.Quiz,
-                        contentDescription = null,
-                        modifier = Modifier.size(56.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Surface(
+                        shape = M3Shapes.CornerLarge,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Quiz,
+                                contentDescription = null,
+                                modifier = Modifier.size(36.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     Text(
                         text = "Aktif Quiz Bulunmuyor",
                         style = MaterialTheme.typography.titleLarge,
@@ -73,7 +95,8 @@ fun QuizScreen(
                     )
                     Button(
                         onClick = onExitQuiz,
-                        shape = CircleShape
+                        shape = M3Shapes.CornerFull,
+                        modifier = Modifier.expressiveBounceClick(onClick = onExitQuiz)
                     ) {
                         Text("Bölüm Seçimine Dön")
                     }
@@ -92,10 +115,14 @@ fun QuizScreen(
     }
 
     val currentIdx = state.currentQuestionIndex.coerceIn(0, quiz.questions.size - 1)
-    val currentQuestion = quiz.questions[currentIdx]
-    val selectedOption = state.selectedAnswers[currentQuestion.id]
     val totalQuestions = quiz.questions.size
     val answeredCount = state.selectedAnswers.size
+
+    val animatedProgress by animateFloatAsState(
+        targetValue = (currentIdx + 1).toFloat() / totalQuestions,
+        animationSpec = M3ExpressiveMotion.defaultSpatial(),
+        label = "quiz_progress"
+    )
 
     // Sınavdan Çıkış Onay Diyaloğu
     if (showExitDialog) {
@@ -106,19 +133,29 @@ fun QuizScreen(
             text = {
                 Text("Sınavı iptal etmek üzeresiniz. Kaydedilmemiş cevaplarınız silinecektir ve bölüm detayına döneceksiniz.")
             },
+            shape = M3Shapes.CornerExtraLargeIncreased,
             confirmButton = {
                 Button(
                     onClick = {
                         showExitDialog = false
                         onExitQuiz()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    shape = M3Shapes.CornerFull,
+                    modifier = Modifier.expressiveBounceClick {
+                        showExitDialog = false
+                        onExitQuiz()
+                    }
                 ) {
                     Text("Sınavı Bitir ve Çık")
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showExitDialog = false }) {
+                OutlinedButton(
+                    onClick = { showExitDialog = false },
+                    shape = M3Shapes.CornerFull,
+                    modifier = Modifier.expressiveBounceClick { showExitDialog = false }
+                ) {
                     Text("Devam Et")
                 }
             }
@@ -134,16 +171,28 @@ fun QuizScreen(
             text = {
                 Text("Toplam $totalQuestions sorudan $answeredCount tanesini cevapladınız. Cevaplarınızı sunucuda değerlendirmek istiyor musunuz?")
             },
+            shape = M3Shapes.CornerExtraLargeIncreased,
             confirmButton = {
-                Button(onClick = {
-                    showSubmitDialog = false
-                    onSubmitQuiz()
-                }) {
+                Button(
+                    onClick = {
+                        showSubmitDialog = false
+                        onSubmitQuiz()
+                    },
+                    shape = M3Shapes.CornerFull,
+                    modifier = Modifier.expressiveBounceClick {
+                        showSubmitDialog = false
+                        onSubmitQuiz()
+                    }
+                ) {
                     Text("Değerlendir")
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showSubmitDialog = false }) {
+                OutlinedButton(
+                    onClick = { showSubmitDialog = false },
+                    shape = M3Shapes.CornerFull,
+                    modifier = Modifier.expressiveBounceClick { showSubmitDialog = false }
+                ) {
                     Text("Sorulara Dön")
                 }
             }
@@ -157,8 +206,7 @@ fun QuizScreen(
                     Column {
                         Text(
                             text = state.selectedChapter?.title ?: "Bölüm Quizi",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMediumEmphasized,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -177,16 +225,17 @@ fun QuizScreen(
                     }
                 },
                 actions = {
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    Surface(
+                        shape = M3Shapes.CornerFull,
+                        color = MaterialTheme.colorScheme.secondaryContainer,
                         modifier = Modifier.padding(end = 16.dp)
                     ) {
                         Text(
                             text = "${currentIdx + 1} / $totalQuestions",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 },
@@ -204,14 +253,14 @@ fun QuizScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // İlerleme Çubuğu & Rozetler
+            // İlerleme Çubuğu & Rozetler (Spring Animated)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 LinearProgressIndicator(
-                    progress = (currentIdx + 1).toFloat() / totalQuestions,
+                    progress = animatedProgress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(6.dp),
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                     color = MaterialTheme.colorScheme.primary
                 )
 
@@ -221,24 +270,53 @@ fun QuizScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (quiz.cacheHit) {
-                        SuggestionChip(
-                            onClick = { },
-                            label = { Text("⚡ Soru Havuzu (Cache Hit)") },
-                            icon = { Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = CacheHitGreenContainer,
-                                labelColor = OnCacheHitGreen,
-                                iconContentColor = CacheHitGreen
-                            ),
-                            border = null
-                        )
+                        Surface(
+                            shape = M3Shapes.CornerFull,
+                            color = CacheHitGreenContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    tint = OnCacheHitGreen,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "⚡ Soru Havuzu (Cache Hit)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = OnCacheHitGreen,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     } else {
-                        SuggestionChip(
-                            onClick = { },
-                            label = { Text("🤖 Qwen 2.5 LLM") },
-                            icon = { Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                            border = null
-                        )
+                        Surface(
+                            shape = M3Shapes.CornerFull,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Psychology,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "🤖 Qwen 2.5 LLM",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
 
                     Text(
@@ -249,69 +327,109 @@ fun QuizScreen(
                 }
             }
 
-            // Soru Kartı (M3 ElevatedCard)
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Soru ${currentIdx + 1}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = currentQuestion.question,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium
-                    )
-                    if (!currentQuestion.sourceChapter.isNullOrBlank()) {
-                        Text(
-                            text = "Kaynak: ${currentQuestion.sourceChapter}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                }
-            }
+            // Soru ve Şıklar (AnimatedContent with M3 Spatial Springs)
+            AnimatedContent(
+                targetState = currentIdx,
+                transitionSpec = {
+                    val isForward = targetState > initialState
+                    val enterSlide = slideInHorizontally(
+                        animationSpec = M3ExpressiveMotion.defaultSpatial(),
+                        initialOffsetX = { fullWidth -> if (isForward) fullWidth / 2 else -fullWidth / 2 }
+                    ) + fadeIn(animationSpec = M3ExpressiveMotion.fastEffects())
 
-            // Şıklar (M3 OutlinedCards with RadioButtons)
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                currentQuestion.options.forEach { option ->
-                    val isSelected = selectedOption == option
-                    OutlinedCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelectOption(currentQuestion.id, option) },
-                        shape = MaterialTheme.shapes.medium,
-                        border = BorderStroke(
-                            width = if (isSelected) 2.dp else 1.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                    val exitSlide = slideOutHorizontally(
+                        animationSpec = M3ExpressiveMotion.defaultSpatial(),
+                        targetOffsetX = { fullWidth -> if (isForward) -fullWidth / 2 else fullWidth / 2 }
+                    ) + fadeOut(animationSpec = M3ExpressiveMotion.fastEffects())
+
+                    enterSlide togetherWith exitSlide
+                },
+                label = "question_transition"
+            ) { qIdx ->
+                val question = quiz.questions[qIdx]
+                val selectedOption = state.selectedAnswers[question.id]
+
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Soru Kartı
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = M3Shapes.CornerLargeIncreased,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                         ),
-                        colors = CardDefaults.outlinedCardColors(
-                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                            else MaterialTheme.colorScheme.surface
-                        )
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = { onSelectOption(currentQuestion.id, option) }
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
-                                text = option,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                text = "Soru ${qIdx + 1}",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
                             )
+                            Text(
+                                text = question.question,
+                                style = MaterialTheme.typography.titleMediumEmphasized
+                            )
+                            if (!question.sourceChapter.isNullOrBlank()) {
+                                Text(
+                                    text = "Kaynak: ${question.sourceChapter}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+                    }
+
+                    // Şıklar (M3 Cards with Spring Bounce & Animated Selection)
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        question.options.forEach { option ->
+                            val isSelected = selectedOption == option
+                            val animatedBorderWidth by animateDpAsState(
+                                targetValue = if (isSelected) 2.dp else 1.dp,
+                                animationSpec = M3ExpressiveMotion.fastSpatial(),
+                                label = "option_border_width"
+                            )
+                            val animatedBorderColor by animateColorAsState(
+                                targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                animationSpec = M3ExpressiveMotion.defaultEffects(),
+                                label = "option_border_color"
+                            )
+                            val animatedContainerColor by animateColorAsState(
+                                targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                else MaterialTheme.colorScheme.surfaceContainerLow,
+                                animationSpec = M3ExpressiveMotion.defaultEffects(),
+                                label = "option_container_color"
+                            )
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .expressiveBounceClick(scaleDown = 0.98f) {
+                                        onSelectOption(question.id, option)
+                                    },
+                                shape = M3Shapes.CornerMedium,
+                                border = BorderStroke(animatedBorderWidth, animatedBorderColor),
+                                colors = CardDefaults.cardColors(containerColor = animatedContainerColor)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { onSelectOption(question.id, option) }
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = option,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -330,7 +448,8 @@ fun QuizScreen(
                 OutlinedButton(
                     onClick = onPrevQuestion,
                     enabled = currentIdx > 0,
-                    shape = CircleShape
+                    shape = M3Shapes.CornerFull,
+                    modifier = Modifier.expressiveBounceClick(onClick = onPrevQuestion)
                 ) {
                     Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
@@ -340,7 +459,8 @@ fun QuizScreen(
                 if (currentIdx < totalQuestions - 1) {
                     FilledTonalButton(
                         onClick = onNextQuestion,
-                        shape = CircleShape
+                        shape = M3Shapes.CornerFull,
+                        modifier = Modifier.expressiveBounceClick(onClick = onNextQuestion)
                     ) {
                         Text("Sonraki")
                         Spacer(modifier = Modifier.width(4.dp))
@@ -349,8 +469,9 @@ fun QuizScreen(
                 } else {
                     Button(
                         onClick = { showSubmitDialog = true },
-                        shape = CircleShape,
-                        enabled = !state.isEvaluating
+                        shape = M3Shapes.CornerFull,
+                        enabled = !state.isEvaluating,
+                        modifier = Modifier.expressiveBounceClick { showSubmitDialog = true }
                     ) {
                         if (state.isEvaluating) {
                             CircularProgressIndicator(

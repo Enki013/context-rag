@@ -2,7 +2,7 @@ package com.contextrag.quizapp.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Light Scheme Colors
+// Light Scheme Colors (M3 Baseline + Surface Containers)
 val md_theme_light_primary = Color(0xFF1E5B94)
 val md_theme_light_onPrimary = Color(0xFFFFFFFF)
 val md_theme_light_primaryContainer = Color(0xFFD2E4FF)
@@ -26,11 +26,19 @@ val md_theme_light_onSurface = Color(0xFF1A1C1E)
 val md_theme_light_surfaceVariant = Color(0xFFDFE2EB)
 val md_theme_light_onSurfaceVariant = Color(0xFF43474E)
 val md_theme_light_outline = Color(0xFF73777F)
+val md_theme_light_outlineVariant = Color(0xFFC3C7D0)
 val md_theme_light_inverseOnSurface = Color(0xFFF1F0F4)
 val md_theme_light_inverseSurface = Color(0xFF2F3033)
 val md_theme_light_inversePrimary = Color(0xFFA1C9FF)
 
-// Dark Scheme Colors
+// M3 Surface Containers (Light)
+val md_theme_light_surfaceContainerLowest = Color(0xFFFFFFFF)
+val md_theme_light_surfaceContainerLow = Color(0xFFF7F9FC)
+val md_theme_light_surfaceContainer = Color(0xFFF1F4F9)
+val md_theme_light_surfaceContainerHigh = Color(0xFFEBEEF3)
+val md_theme_light_surfaceContainerHighest = Color(0xFFE2E5EB)
+
+// Dark Scheme Colors (M3 Baseline + Surface Containers)
 val md_theme_dark_primary = Color(0xFFA1C9FF)
 val md_theme_dark_onPrimary = Color(0xFF00315B)
 val md_theme_dark_primaryContainer = Color(0xFF00487F)
@@ -54,11 +62,32 @@ val md_theme_dark_onSurface = Color(0xFFE2E2E5)
 val md_theme_dark_surfaceVariant = Color(0xFF43474E)
 val md_theme_dark_onSurfaceVariant = Color(0xFFC3C6CF)
 val md_theme_dark_outline = Color(0xFF8D9199)
+val md_theme_dark_outlineVariant = Color(0xFF43474E)
 val md_theme_dark_inverseOnSurface = Color(0xFF1A1C1E)
 val md_theme_dark_inverseSurface = Color(0xFFE2E2E5)
 val md_theme_dark_inversePrimary = Color(0xFF1E5B94)
 
-// Custom Success / Cache Token Colors
+// M3 Surface Containers (Dark)
+val md_theme_dark_surfaceContainerLowest = Color(0xFF0C0E11)
+val md_theme_dark_surfaceContainerLow = Color(0xFF171A1D)
+val md_theme_dark_surfaceContainer = Color(0xFF1B1E21)
+val md_theme_dark_surfaceContainerHigh = Color(0xFF25282C)
+val md_theme_dark_surfaceContainerHighest = Color(0xFF303337)
+
+// Custom Success / Cache Hit Colors
 val CacheHitGreen = Color(0xFF107C41)
 val CacheHitGreenContainer = Color(0xFFD5F5E3)
 val OnCacheHitGreen = Color(0xFF00391A)
+
+val CacheHitGreenDark = Color(0xFF66DB8C)
+val CacheHitGreenDarkContainer = Color(0xFF005327)
+val OnCacheHitGreenDark = Color(0xFFD5F5E3)
+
+// Quiz Accent Tokens
+val QuizGold = Color(0xFFF59E0B)
+val QuizGoldContainer = Color(0xFFFEF3C7)
+val OnQuizGold = Color(0xFF78350F)
+
+val QuizPurple = Color(0xFF7C3AED)
+val QuizPurpleContainer = Color(0xFFEDE9FE)
+val OnQuizPurple = Color(0xFF4C1D95)
