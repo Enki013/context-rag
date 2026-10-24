@@ -8,12 +8,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -128,7 +128,7 @@ fun ResultScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBackToChapters) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Bölümlere Dön")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Bölümlere Dön")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -231,7 +231,7 @@ fun ResultScreen(
                                     .expressiveBounceClick(onClick = onBackToLibrary),
                                 shape = M3Shapes.CornerFull
                             ) {
-                                Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Kitaplığıma Dön")
                             }

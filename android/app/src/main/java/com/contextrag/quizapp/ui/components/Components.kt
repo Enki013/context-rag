@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -35,6 +36,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEvent
@@ -43,6 +46,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
@@ -168,7 +172,21 @@ private class ExpressivePressScaleNode(
             anim.animateTo(
                 targetValue = target,
                 animationSpec = M3ExpressiveMotion.fastSpatial()
-            )
+            ) {
+                invalidateDraw()
+            }
+            invalidateDraw()
+        }
+    }
+
+    override fun ContentDrawScope.draw() {
+        val currentScale = scaleAnimatable?.value ?: 1f
+        if (currentScale != 1f) {
+            scale(scaleX = currentScale, scaleY = currentScale, pivot = center) {
+                this@draw.drawContent()
+            }
+        } else {
+            drawContent()
         }
     }
 }

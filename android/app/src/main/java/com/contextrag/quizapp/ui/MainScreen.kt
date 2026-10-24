@@ -11,7 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -106,7 +106,7 @@ fun MainScreen(viewModel: QuizViewModel) {
                     NavigationBarItem(
                         selected = state.currentScreen == AppScreen.LIBRARY,
                         onClick = { viewModel.navigateTo(AppScreen.LIBRARY) },
-                        icon = { Icon(Icons.Default.MenuBook, contentDescription = "Kitaplık") },
+                        icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = "Kitaplık") },
                         label = { Text("Kitaplık") },
                         modifier = Modifier.expressiveBounceClick(scaleDown = 0.94f) {
                             viewModel.navigateTo(AppScreen.LIBRARY)

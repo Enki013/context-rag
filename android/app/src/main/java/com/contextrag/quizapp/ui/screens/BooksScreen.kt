@@ -5,11 +5,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -39,7 +39,6 @@ fun BooksScreen(
     onSelectBook: (BookItem) -> Unit
 ) {
     val totalIndexed = state.health?.totalBooks ?: 79446
-    val cachedBooksCount = state.searchResults.count { it.isCachedLocally }
 
     LazyColumn(
         modifier = Modifier
@@ -59,7 +58,7 @@ fun BooksScreen(
                     value = "${totalIndexed / 1000}k+",
                     badgeText = "FTS5",
                     note = "İndeksli Kitap",
-                    valueIcon = Icons.Default.MenuBook,
+                    valueIcon = Icons.AutoMirrored.Filled.MenuBook,
                     modifier = Modifier.weight(1f)
                 )
                 MetricCard(
@@ -219,7 +218,7 @@ fun BooksScreen(
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = if (book.isCachedLocally) Icons.Default.AutoStories else Icons.Default.MenuBook,
+                                        imageVector = if (book.isCachedLocally) Icons.Default.AutoStories else Icons.AutoMirrored.Filled.MenuBook,
                                         contentDescription = null,
                                         tint = if (book.isCachedLocally) OnCacheHitGreen else MaterialTheme.colorScheme.onSecondaryContainer,
                                         modifier = Modifier.size(22.dp)
@@ -261,7 +260,7 @@ fun BooksScreen(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    Icons.Default.MenuBook,
+                                    Icons.AutoMirrored.Filled.MenuBook,
                                     contentDescription = null,
                                     modifier = Modifier.size(36.dp),
                                     tint = MaterialTheme.colorScheme.primary
