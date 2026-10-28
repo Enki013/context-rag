@@ -1,6 +1,7 @@
 package com.contextrag.quizapp.data
 
 import com.google.gson.Gson
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -10,7 +11,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
+class ApiClient(
+    var baseUrl: String = "http://10.0.2.2:8000",
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -24,14 +28,14 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
     private fun extractErrorMessage(response: okhttp3.Response): String {
         return try {
             val errorBody = response.body?.string() ?: ""
-            val json = org.json.JSONObject(errorBody)
-            json.optString("detail", "HTTP ${response.code}: ${response.message}")
+            val json = gson.fromJson(errorBody, com.google.gson.JsonObject::class.java)
+            json?.get("detail")?.asString ?: "HTTP ${response.code}: ${response.message}"
         } catch (_: Exception) {
             "HTTP ${response.code}: ${response.message}"
         }
     }
 
-    suspend fun checkHealth(): Result<HealthResponse> = withContext(Dispatchers.IO) {
+    suspend fun checkHealth(): Result<HealthResponse> = withContext(ioDispatcher) {
         try {
             val request = Request.Builder()
                 .url("$baseUrl/api/v1/health")
@@ -51,7 +55,7 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
         }
     }
 
-    suspend fun searchBooks(query: String, limit: Int = 15): Result<BookSearchResponse> = withContext(Dispatchers.IO) {
+    suspend fun searchBooks(query: String, limit: Int = 15): Result<BookSearchResponse> = withContext(ioDispatcher) {
         try {
             val url = "$baseUrl/api/v1/books/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}&limit=$limit"
             val request = Request.Builder().url(url).get().build()
@@ -69,7 +73,7 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
         }
     }
 
-    suspend fun getBookChapters(bookId: String): Result<BookChaptersResponse> = withContext(Dispatchers.IO) {
+    suspend fun getBookChapters(bookId: String): Result<BookChaptersResponse> = withContext(ioDispatcher) {
         try {
             val url = "$baseUrl/api/v1/books/$bookId/chapters"
             val request = Request.Builder().url(url).get().build()
@@ -93,7 +97,7 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
         count: Int = 5,
         difficulty: String = "orta",
         hideAnswers: Boolean = true
-    ): Result<ServeQuizResponse> = withContext(Dispatchers.IO) {
+    ): Result<ServeQuizResponse> = withContext(ioDispatcher) {
         try {
             val url = "$baseUrl/api/v1/quiz/serve?book_id=${java.net.URLEncoder.encode(bookId, "UTF-8")}&chapter_index=$chapterIndex&count=$count&difficulty=$difficulty&hide_answers=$hideAnswers"
             val request = Request.Builder().url(url).get().build()
@@ -111,7 +115,7 @@ class ApiClient(var baseUrl: String = "http://10.0.2.2:8000") {
         }
     }
 
-    suspend fun evaluateAnswers(answers: List<AnswerItem>): Result<EvaluationResponse> = withContext(Dispatchers.IO) {
+    suspend fun evaluateAnswers(answers: List<AnswerItem>): Result<EvaluationResponse> = withContext(ioDispatcher) {
         try {
             val payload = gson.toJson(EvaluationRequest(answers))
             val body = payload.toRequestBody(jsonMediaType)

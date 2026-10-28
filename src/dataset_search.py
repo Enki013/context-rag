@@ -148,6 +148,9 @@ def search_books(query: str, limit: int = 20) -> list[dict]:
     fts_query = _clean_fts_query(query)
     results = []
 
+    candidate_limit = max(limit * 5, 80)
+    seen_ids = set()
+
     try:
         with sqlite3.connect(CATALOG_DB_PATH) as conn:
             cur = conn.cursor()
@@ -161,9 +164,10 @@ def search_books(query: str, limit: int = 20) -> list[dict]:
                     ORDER BY rank
                     LIMIT ?
                 """
-                cur.execute(sql, (fts_query, limit * 2))
+                cur.execute(sql, (fts_query, candidate_limit))
                 rows = cur.fetchall()
                 for r in rows:
+                    b_id = str(r[0])
                     tit = r[1] or ""
                     auth = r[2] or "Bilinmiyor"
                     subj = r[3] or ""
@@ -180,23 +184,24 @@ def search_books(query: str, limit: int = 20) -> list[dict]:
                         or "midi file" in tit.lower()
                     ):
                         continue
-                    results.append(
-                        {
-                            "book_id": str(r[0]),
-                            "title": tit,
-                            "author": auth,
-                            "subjects": subj,
-                            "bookshelves": r[4] or "",
-                            "language": r[5] or "en",
-                        }
-                    )
-                    if len(results) >= limit:
-                        break
+                    if b_id not in seen_ids:
+                        seen_ids.add(b_id)
+                        results.append(
+                            {
+                                "book_id": b_id,
+                                "title": tit,
+                                "author": auth,
+                                "subjects": subj,
+                                "bookshelves": r[4] or "",
+                                "language": r[5] or "en",
+                            }
+                        )
+                        if len(results) >= candidate_limit:
+                            break
 
             # FTS sonuç vermediyse veya yetersizse standart LIKE aramasıyla destekle
-            if len(results) < limit:
-                needed = limit - len(results)
-                seen_ids = {r["book_id"] for r in results}
+            if len(results) < candidate_limit:
+                needed = candidate_limit - len(results)
                 like_pattern = f"%{query}%"
 
                 like_sql = """
@@ -205,7 +210,7 @@ def search_books(query: str, limit: int = 20) -> list[dict]:
                     WHERE title LIKE ? OR author LIKE ?
                     LIMIT ?
                 """
-                cur.execute(like_sql, (like_pattern, like_pattern, needed * 3))
+                cur.execute(like_sql, (like_pattern, like_pattern, needed * 2))
                 for r in cur.fetchall():
                     b_id = str(r[0])
                     tit = r[1] or ""
@@ -235,7 +240,7 @@ def search_books(query: str, limit: int = 20) -> list[dict]:
                                 "language": r[5] or "en",
                             }
                         )
-                        if len(results) >= limit:
+                        if len(results) >= candidate_limit:
                             break
 
     except Exception as e:
@@ -249,8 +254,9 @@ def search_books(query: str, limit: int = 20) -> list[dict]:
         return (0 if is_cached else 1, numeric_id)
 
     results.sort(key=_rank_book)
-    logger.info(f"Yerel arama: '{query}' → {len(results)} kitap bulundu.")
-    return results
+    final_results = results[:limit]
+    logger.info(f"Yerel arama: '{query}' → {len(final_results)} kitap döndürüldü (toplam {len(results)} adaydan).")
+    return final_results
 
 
 # ─── Bölüm (Chapter) ve İlerleme Tespiti ────────────────────────────────────

@@ -55,7 +55,9 @@ data class UiState(
     val evaluationResult: EvaluationResponse? = null
 )
 
-class QuizViewModel : ViewModel() {
+class QuizViewModel @JvmOverloads constructor(
+    private var apiClient: ApiClient = ApiClient()
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState = _uiState.asStateFlow()
@@ -63,9 +65,8 @@ class QuizViewModel : ViewModel() {
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent = _snackbarEvent.asSharedFlow()
 
-    private var apiClient = ApiClient(_uiState.value.baseUrl)
-
     init {
+        _uiState.value = _uiState.value.copy(baseUrl = apiClient.baseUrl)
         checkHealth()
         searchBooks(_uiState.value.searchQuery)
     }
