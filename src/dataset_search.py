@@ -9,11 +9,12 @@ Mimari:
      üzerinde çalışır (~0.2 milisaniye). Aramada ASLA internet indirmesi başlatılmaz.
   2. Kitap seçildiğinde metin diskte (`data/books/{book_id}.txt`) varsa anında okunur,
      yoksa bir kereye mahsus indirilip diske kalıcı olarak kaydedilir.
-  3. Lisans başlık/altlıkları temizlenir, metin chunk'lara bölünür ve Ollama ile
-     yalnızca gerekli chunk'lar embed edilip quiz üretimine iletilir.
+  3. Lisans başlık/altlıkları temizlenir, metin chunk'lara bölünür ve kitabın tamamını
+     kapsayan katmanlı örneklemeyle seçilen chunk'lar quiz üretimine iletilir.
 """
 
 import logging
+import random
 import os
 import re
 import sqlite3
@@ -23,7 +24,6 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import BOOKS_DIR, CATALOG_DB_PATH, DATASET_CACHE_DIR, DATASET_MAX_RESULTS
 from src.chunker import chunk_text
-from src.embedder import _get_embeddings_batch
 
 logger = logging.getLogger(__name__)
 
@@ -461,7 +461,7 @@ def get_chunks_for_book(
 ) -> list[dict]:
     """
     Belirtilen kitabın metnini yerel diskten okur (yoksa bir defaya mahsus indirip
-    diske kaydeder), chunk'lar ve Ollama ile embed edip quiz için döndürür.
+    diske kaydeder), chunk'lara böler ve quiz için temsil edici chunk'ları döndürür.
 
     Args:
         book_id: Gutenberg kitap ID'si
@@ -471,7 +471,7 @@ def get_chunks_for_book(
         chapter_index: Belirli bir bölümden soru üretmek için bölüm numarası (1-based)
 
     Returns:
-        [{"text": str, "title": str, "author": str, "source_pages": [], "source_chapter": str, "progress_percent": float, "embedding": [...]}, ...]
+        [{"index": int, "text": str, "title": str, "author": str, "source_pages": [], "source_chapter": str, "progress_percent": float}, ...]
     """
     from scripts.download_dataset import download_book_text
 
@@ -513,40 +513,42 @@ def get_chunks_for_book(
                     return ch["title"], ch["progress_percent"]
             return all_chapters[0]["title"], all_chapters[0]["progress_percent"]
 
-        curr_offset = 0
         for c in raw_chunks:
-            t_len = len(c["text"])
-            c_title, c_pct = _match_chap(curr_offset)
+            c_title, c_pct = _match_chap(c.get("start_char") or 0)
             c["source_chapter"] = c_title
             c["progress_percent"] = c_pct
-            curr_offset += t_len
 
     logger.info(f"Kitap '{title}' ({len(clean_text):,} karakter) → {len(raw_chunks)} chunk.")
 
-    # 4. Quiz için temsil edici chunk'ları seç
-    if len(raw_chunks) <= max_chunks:
-        selected_chunks = raw_chunks
-    else:
-        step = max(1, len(raw_chunks) // max_chunks)
-        selected_chunks = raw_chunks[::step][:max_chunks]
+    # 4. Quiz için temsil edici chunk'ları seç (tüm metni kapsayan katmanlı örnekleme)
+    selected_chunks = _stratified_sample(raw_chunks, max_chunks)
 
-    # 5. Embedding'leri üret
-    texts = [c["text"] for c in selected_chunks]
-    logger.info(f"Quiz için {len(texts)} chunk embed ediliyor...")
-    embeddings = _get_embeddings_batch(texts)
+    return [
+        {
+            "index": chunk["index"],
+            "text": chunk["text"],
+            "title": title,
+            "author": author,
+            "source_pages": chunk.get("source_pages", []),
+            "source_chapter": chunk.get("source_chapter"),
+            "progress_percent": chunk.get("progress_percent"),
+        }
+        for chunk in selected_chunks
+    ]
 
-    result = []
-    for chunk, emb in zip(selected_chunks, embeddings):
-        result.append(
-            {
-                "text": chunk["text"],
-                "title": title,
-                "author": author,
-                "source_pages": chunk.get("pages", []),
-                "source_chapter": chunk.get("source_chapter"),
-                "progress_percent": chunk.get("progress_percent"),
-                "embedding": emb,
-            }
-        )
 
-    return result
+def _stratified_sample(items: list, k: int, rng: Optional[random.Random] = None) -> list:
+    """
+    Listeyi k eşit dilime böler ve her dilimden bir öğe seçer.
+    Böylece metnin başı, ortası ve sonu her zaman temsil edilir; sıralama korunur.
+    """
+    n = len(items)
+    if n <= k:
+        return list(items)
+    rng = rng or random
+    picks = []
+    for i in range(k):
+        lo = (i * n) // k
+        hi = ((i + 1) * n) // k - 1
+        picks.append(items[rng.randint(lo, max(lo, hi))])
+    return picks

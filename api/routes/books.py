@@ -9,8 +9,9 @@ import os
 import re
 import sqlite3
 from typing import Optional
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from config import BOOKS_DIR, CATALOG_DB_PATH
+from api.security import require_admin
 from api.schemas import (
     BookChapterCountResponse,
     BookChaptersResponse,
@@ -146,8 +147,13 @@ def get_book_chapter_count_endpoint(book_id: str):
         raise HTTPException(status_code=500, detail=f"Bölüm sayısı hesaplanırken hata oluştu: {e}")
 
 
-@router.post("/import", response_model=BookImportResponse, summary="EPUB veya PDF kitabını sisteme kaydet ve bölümlerini ayrıştır")
-async def import_book_endpoint(
+@router.post(
+    "/import",
+    response_model=BookImportResponse,
+    summary="EPUB veya PDF kitabını sisteme kaydet ve bölümlerini ayrıştır (Admin)",
+    dependencies=[Depends(require_admin)],
+)
+def import_book_endpoint(
     file: UploadFile = File(..., description="Yüklenecek EPUB veya PDF dosyası"),
     book_id: Optional[str] = Form(None, description="Özel kitap ID (boş bırakılırsa dosya adından üretilir)"),
     title: Optional[str] = Form(None, description="Kitap adı (boşsa dosyadan çıkarılır)"),
@@ -161,7 +167,7 @@ async def import_book_endpoint(
     if not (filename.endswith(".epub") or filename.endswith(".pdf")):
         raise HTTPException(status_code=400, detail="Yalnızca .epub ve .pdf dosyaları desteklenir.")
 
-    contents = await file.read()
+    contents = file.file.read()
     if not contents:
         raise HTTPException(status_code=400, detail="Dosya içeriği boş.")
 

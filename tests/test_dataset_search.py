@@ -198,8 +198,9 @@ class TestBookChaptersAndChunks:
         assert len(chunks) > 0
         first = chunks[0]
         assert "text" in first
-        assert "embedding" in first
-        assert len(first["embedding"]) > 0
+        # Embedding artık üretilmiyor (hiçbir yerde kullanılmıyordu)
+        assert "embedding" not in first
+        assert "index" in first
         assert "source_chapter" in first
         assert first["progress_percent"] is not None
 

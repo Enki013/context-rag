@@ -1,3 +1,6 @@
+# Prompt veya üretim kuralları değişince artırın; havuzdaki eski sorular bu alanla ayırt edilir.
+PROMPT_VERSION = "2026-11-02.1"
+
 SYSTEM_PROMPT = """You are a strict quiz generator. You ONLY output valid JSON. \
 Never include markdown, code fences, or any text outside JSON. \
 Every single word in your output must be in {language}. \

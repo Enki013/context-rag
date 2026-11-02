@@ -71,19 +71,23 @@ def chunk_text(
     chunks = []
     search_start = 0
     for i, chunk in enumerate(raw_chunks):
+        # Overlap yüzünden len(chunk) toplamı gerçek konumu vermez; gerçek offset'i ara.
+        pos = text.find(chunk, search_start)
+        if pos == -1:
+            pos = text.find(chunk)
+        if pos >= 0:
+            search_start = pos + 1
+
         chunk_data = {
             "index": i,
             "text": chunk,
             "length": len(chunk),
+            "start_char": pos if pos >= 0 else None,
         }
 
         if page_index:
-            pos = text.find(chunk, search_start)
-            if pos == -1:
-                pos = text.find(chunk)
             if pos >= 0:
                 source_pages = _find_source_pages(pos, pos + len(chunk), page_index)
-                search_start = pos + 1
             else:
                 source_pages = []
             chunk_data["source_pages"] = source_pages

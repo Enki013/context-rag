@@ -9,7 +9,7 @@ import os
 import shutil
 import sqlite3
 from typing import List, Optional
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from config import CATALOG_DB_PATH, MAX_FILE_SIZE_MB, UPLOAD_DIR
 from api.schemas import (
     BankAnswerItem,
@@ -24,15 +24,14 @@ from api.schemas import (
     QuizQuestion,
     QuizResponse,
 )
+from api.security import is_admin, require_admin
 from src.chunker import chunk_text
-from src.contextual_chunker import contextualize_chunks, generate_summary
 from src.dataset_search import get_chunks_for_book
-from src.embedder import generate_collection_name, get_all_chunks, store_chunks
 from src.pdf_processor import extract_text_from_bytes, get_full_text
 from src.epub_processor import extract_text_from_epub_bytes
 from src.question_bank import (
-    count_pool_questions,
     evaluate_answers_against_bank,
+    populate_chapter_pool,
     serve_chapter_quiz,
 )
 from src.quiz_generator import generate_quiz
@@ -129,20 +128,22 @@ def generate_quiz_from_book(req: BookQuizRequest):
 
 
 @router.post("/generate-from-pdf", response_model=QuizResponse, summary="Yüklenen bir PDF'ten quiz üret")
-async def generate_quiz_from_pdf(
+def generate_quiz_from_pdf(
     file: UploadFile = File(..., description="Quiz üretilecek PDF dosyası"),
     num_questions: int = Form(5, ge=1, le=10, description="Soru sayısı (1-10)"),
     difficulty: str = Form("orta", description="kolay | orta | zor"),
     question_type: str = Form("multiple_choice", description="Soru türü"),
 ):
     """
-    Mobil cihazdan yüklenen bir PDF dosyasını okur, Contextual Retrieval ile
-    chunk'lara bağlam ekler, Chroma vektör veritabanına kaydeder ve quiz üretir.
+    Mobil cihazdan yüklenen bir PDF dosyasını okur, chunk'lara böler ve quiz üretir.
+
+    Not: Senkron `def` olarak tanımlı; böylece uzun süren PDF işleme ve LLM çağrıları
+    FastAPI thread havuzunda çalışır ve event loop'u (diğer istekleri) bloklamaz.
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Yalnızca .pdf uzantılı dosyalar kabul edilir.")
 
-    contents = await file.read()
+    contents = file.file.read()
     file_size_mb = len(contents) / (1024 * 1024)
     if file_size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(
@@ -161,18 +162,11 @@ async def generate_quiz_from_pdf(
     if not chunks:
         raise HTTPException(status_code=400, detail="Metin parçalanamadı.")
 
-    # 3. Contextual Retrieval
-    summary = generate_summary(full_text)
-    ctx_chunks = contextualize_chunks(chunks, summary)
-
-    # 4. Vektör deposuna kaydetme
-    collection_name = generate_collection_name(file.filename)
-    store_chunks(ctx_chunks, collection_name)
-
-    # 5. Quiz üretimi
-    all_stored_chunks = get_all_chunks(collection_name, with_metadata=True)
+    # 3. Quiz üretimi
+    # (Önceden burada özet + chunk başına LLM bağlamı + embedding üretilip diske yazılıyordu,
+    #  ama hiçbir zaman sorgulanmıyordu. Retrieval eklenene kadar bu iş yapılmıyor.)
     raw_quiz = generate_quiz(
-        all_stored_chunks,
+        chunks,
         num_questions=num_questions,
         difficulty=difficulty,
         question_type=question_type,
@@ -200,7 +194,7 @@ async def generate_quiz_from_pdf(
 
 
 @router.post("/generate-from-epub", response_model=QuizResponse, summary="Yüklenen bir EPUB'tan quiz üret")
-async def generate_quiz_from_epub(
+def generate_quiz_from_epub(
     file: UploadFile = File(..., description="Quiz üretilecek EPUB dosyası"),
     num_questions: int = Form(5, ge=1, le=10, description="Soru sayısı (1-10)"),
     difficulty: str = Form("orta", description="kolay | orta | zor"),
@@ -208,13 +202,12 @@ async def generate_quiz_from_epub(
 ):
     """
     Mobil veya web istemcisinden yüklenen bir EPUB dosyasını okur,
-    gömülü içindekiler (TOC) ve sayfaları çıkarır, Contextual Retrieval ile
-    chunk'lara bağlam ekler, Chroma vektör veritabanına kaydeder ve quiz üretir.
+    gömülü içindekiler (TOC) ve sayfaları çıkarır, chunk'lara böler ve quiz üretir.
     """
     if not file.filename.lower().endswith(".epub"):
         raise HTTPException(status_code=400, detail="Yalnızca .epub uzantılı dosyalar kabul edilir.")
 
-    contents = await file.read()
+    contents = file.file.read()
     file_size_mb = len(contents) / (1024 * 1024)
     if file_size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(
@@ -238,18 +231,11 @@ async def generate_quiz_from_epub(
     if not chunks:
         raise HTTPException(status_code=400, detail="Metin parçalanamadı.")
 
-    # 3. Contextual Retrieval
-    summary = generate_summary(full_text)
-    ctx_chunks = contextualize_chunks(chunks, summary)
-
-    # 4. Vektör deposuna kaydetme
-    collection_name = generate_collection_name(file.filename)
-    store_chunks(ctx_chunks, collection_name)
-
-    # 5. Quiz üretimi
-    all_stored_chunks = get_all_chunks(collection_name, with_metadata=True)
+    # 3. Quiz üretimi
+    # (Önceden burada özet + chunk başına LLM bağlamı + embedding üretilip diske yazılıyordu,
+    #  ama hiçbir zaman sorgulanmıyordu. Retrieval eklenene kadar bu iş yapılmıyor.)
     raw_quiz = generate_quiz(
-        all_stored_chunks,
+        chunks,
         num_questions=num_questions,
         difficulty=difficulty,
         question_type=question_type,
@@ -347,14 +333,18 @@ def serve_quiz_endpoint(
     chapter_index: int = Query(1, ge=1, description="1-tabanlı bölüm numarası"),
     count: int = Query(5, ge=1, le=20, description="Döndürülecek soru sayısı (1-20)"),
     difficulty: str = Query("orta", description="kolay | orta | zor"),
-    hide_answers: bool = Query(True, description="Doğru şık ve açıklamayı gizle (hile koruması)"),
+    hide_answers: bool = Query(True, description="Doğru şık ve açıklamayı gizle (hile koruması). `false` yalnızca X-Admin-Key ile."),
+    x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key"),
 ):
     """
     Mobil istemciler için soru bankası üzerinden quiz dağıtır.
     1. İlgili bölümün havuzunda soru varsa **0 milisaniyede** döner (Cache Hit).
     2. Havuz boşsa o bölümün metninden LLM ile soru üretip havuza kaydeder ve döner (Cache Miss).
     3. `hide_answers=true` (varsayılan) ile doğru şık mobil kullanıcıya sızdırılmaz.
+       Cevapları görmek (`hide_answers=false`) yalnızca geçerli `X-Admin-Key` ile mümkündür.
     """
+    if not hide_answers and not is_admin(x_admin_key):
+        raise HTTPException(status_code=403, detail="Cevaplı quiz yalnızca admin anahtarıyla alınabilir.")
     try:
         data = serve_chapter_quiz(
             book_id=book_id,
@@ -418,35 +408,41 @@ def evaluate_bank_answers_endpoint(req: BankEvaluationRequest):
         raise HTTPException(status_code=500, detail=f"Değerlendirme sırasında hata oluştu: {e}")
 
 
-@router.post("/populate", summary="Bölüm için soru havuzunu önceden doldur (Arka Plan / Admin)")
+@router.post(
+    "/populate",
+    summary="Bölüm için soru havuzunu önceden doldur (Arka Plan / Admin)",
+    dependencies=[Depends(require_admin)],
+)
 def populate_pool_endpoint(
     book_id: str = Query(..., description="Kitap ID"),
     chapter_index: int = Query(..., ge=1, description="Bölüm numarası"),
-    target_count: int = Query(10, ge=1, le=30, description="Havuza eklenecek hedef soru sayısı"),
+    target_count: int = Query(10, ge=1, le=30, description="Havuzda olması hedeflenen toplam soru sayısı"),
     difficulty: str = Query("orta", description="kolay | orta | zor"),
 ):
     """
-    Belirli bir bölüm için soru havuzunu önceden üretip veritabanına yığar.
+    Belirli bir bölüm için soru havuzunu `target_count` soruya kadar doldurur.
+    Havuz kısmen doluysa yalnızca eksik kadar soru üretilir.
     Kullanıcılar o bölüme geldiğinde anında (0ms) quiz çözebilir.
     """
     try:
-        data = serve_chapter_quiz(
+        result = populate_chapter_pool(
             book_id=book_id,
             chapter_index=chapter_index,
-            count=1,
+            target_count=target_count,
             difficulty=difficulty,
-            min_pool_target=target_count,
-            hide_answers=True,
         )
-        total_now = count_pool_questions(book_id, chapter_index, difficulty=difficulty)
+        total_now = result["total_pool_size"]
         return {
             "status": "ok",
             "book_id": book_id,
             "chapter_index": chapter_index,
             "difficulty": difficulty,
+            "generated": result["generated"],
             "total_pool_size": total_now,
             "message": f"Bölüm {chapter_index} havuzu hazırlandı. Toplam {total_now} soru mevcut.",
         }
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         logger.error(f"Havuz doldurma hatası ({book_id}, ch={chapter_index}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Havuz doldurulurken hata oluştu: {e}")

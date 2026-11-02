@@ -26,6 +26,10 @@ CONTEXTUAL_LLM_THRESHOLD = 50  # Bu chunk sayısının altında LLM ile bağlam 
 # Limits
 MAX_FILE_SIZE_MB = 50
 
+# Admin uçları (/books/import, /quiz/populate, cevaplı /quiz/serve) için X-Admin-Key değeri.
+# Tanımlı değilse bu uçlar kapalıdır.
+ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY")
+
 # Dataset & Books (Project Gutenberg)
 HF_DATASET_NAME = "Project Gutenberg"
 DATASET_CACHE_DIR = os.path.join(BASE_DIR, "data", "dataset_cache")

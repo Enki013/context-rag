@@ -27,6 +27,7 @@ Mobil kütüphanenize yeni bir EPUB veya PDF eklendiğinde içeriği ve bölüm 
 
 - **URL:** `POST /api/v1/books/import`
 - **Content-Type:** `multipart/form-data`
+- **Header:** `X-Admin-Key: {ADMIN_API_KEY}` (admin uç; sunucuda `ADMIN_API_KEY` tanımlı değilse kapalıdır)
 
 #### Form Parametreleri:
 | Alan | Tip | Zorunlu | Açıklama |
@@ -39,6 +40,7 @@ Mobil kütüphanenize yeni bir EPUB veya PDF eklendiğinde içeriği ve bölüm 
 #### Örnek İstek (cURL):
 ```bash
 curl -X POST http://localhost:8000/api/v1/books/import \
+  -H "X-Admin-Key: $ADMIN_API_KEY" \
   -F "file=@nutuk.epub" \
   -F "book_id=nutuk" \
   -F "title=Nutuk" \
@@ -91,7 +93,7 @@ Kullanıcı bir bölümü bitirdiğinde quizi çeker.
   - `chapter_index` *(int, varsayılan 1)*: 1-tabanlı bölüm numarası
   - `count` *(int, varsayılan 5)*: İstenen soru adedi (1-20)
   - `difficulty` *(string, varsayılan "orta")*: `kolay` \| `orta` \| `zor`
-  - `hide_answers` *(bool, varsayılan true)*: `true` ise doğru cevaplar gizlenir.
+  - `hide_answers` *(bool, varsayılan true)*: `true` ise doğru cevaplar gizlenir. `false` yalnızca `X-Admin-Key` ile kabul edilir (aksi halde `403`).
 
 #### Örnek İstek:
 ```bash
@@ -182,6 +184,8 @@ Mobil istemci kullanıcının seçtiği şıkları soru ID'leri ile gönderir.
 Kullanıcılar okumaya başlamadan önce veya bir kitap sisteme yüklendiğinde arka plan worker'ı tarafından havuzu şişirmek için çağrılır.
 
 - **URL:** `POST /api/v1/quiz/populate?book_id={book_id}&chapter_index={chapter_index}&target_count=15&difficulty=orta`
+- **Header:** `X-Admin-Key: {ADMIN_API_KEY}`
+- `target_count` havuzda olması hedeflenen toplam soru sayısıdır; havuz kısmen doluysa yalnızca eksik kadar üretilir.
 
 #### Örnek Yanıt:
 ```json
@@ -190,6 +194,7 @@ Kullanıcılar okumaya başlamadan önce veya bir kitap sisteme yüklendiğinde 
   "book_id": "nutuk",
   "chapter_index": 1,
   "difficulty": "orta",
+  "generated": 15,
   "total_pool_size": 15,
   "message": "Bölüm 1 havuzu hazırlandı. Toplam 15 soru mevcut."
 }

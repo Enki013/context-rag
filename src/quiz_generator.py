@@ -9,7 +9,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import LLM_MODEL
-from src.prompts import build_quiz_prompt, build_system_prompt, detect_language
+from src.prompts import PROMPT_VERSION, build_quiz_prompt, build_system_prompt, detect_language
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +110,37 @@ def _has_vague_options(options: list[str]) -> bool:
     return False
 
 
+_OPTION_PREFIX = re.compile(r'^\s*[A-Da-d]\s*[\)\.:]\s*')
+_LETTERS = ("A", "B", "C", "D")
+
+
+def _strip_option_prefix(opt: str) -> str:
+    return _OPTION_PREFIX.sub('', str(opt)).strip()
+
+
+def _has_duplicate_options(options: list[str]) -> bool:
+    normalized = [_strip_option_prefix(o).lower() for o in options]
+    return len(set(normalized)) != len(normalized)
+
+
+def _shuffle_options(q: dict, rng: random.Random | None = None) -> dict:
+    """
+    Şıkları karıştırır ve A)-D) etiketlerini yeniden yazar.
+    LLM doğru cevabı çoğunlukla A/B'ye koyuyor; bu konum yanlılığını kırar.
+    """
+    rng = rng or random
+    texts = [_strip_option_prefix(o) for o in q["options"]]
+    correct_text = texts[_LETTERS.index(q["correct_answer"])]
+
+    order = list(range(len(texts)))
+    rng.shuffle(order)
+    shuffled = [texts[i] for i in order]
+
+    q["options"] = [f"{_LETTERS[i]}) {t}" for i, t in enumerate(shuffled)]
+    q["correct_answer"] = _LETTERS[shuffled.index(correct_text)]
+    return q
+
+
 def _validate_question(q: dict, expected_lang: str) -> bool:
     """Bir sorunun yapisal, dilsel ve kalite kontrolünü yapar."""
     required = ["question", "options", "correct_answer", "explanation"]
@@ -121,8 +152,12 @@ def _validate_question(q: dict, expected_lang: str) -> bool:
         logger.debug(f"Sik sayisi hatali: {q.get('question', '?')[:50]}")
         return False
 
-    if q["correct_answer"] not in ("A", "B", "C", "D"):
+    if q["correct_answer"] not in _LETTERS:
         logger.debug(f"Gecersiz correct_answer: {q.get('correct_answer')}")
+        return False
+
+    if _has_duplicate_options(q["options"]):
+        logger.debug(f"Tekrarlanan sik: {q.get('question', '?')[:50]}")
         return False
 
     # Soru cok kisa mi?
@@ -166,20 +201,42 @@ def _collect_source_pages(chunks: list) -> list[int]:
     return sorted(pages)
 
 
-def _build_context(chunks: list) -> str:
-    """Chunk listesini max karakter sınırına göre birleştirir."""
+def _strip_overlap(prev: str, curr: str, max_overlap: int = 400, min_overlap: int = 20) -> str:
+    """Ardışık chunk'lar arasındaki splitter overlap'ini atar; aynı metin LLM'e iki kez gitmesin."""
+    if not prev:
+        return curr
+    for k in range(min(len(prev), len(curr), max_overlap), min_overlap - 1, -1):
+        if prev.endswith(curr[:k]):
+            return curr[k:].lstrip()
+    return curr
+
+
+def _build_context(chunks: list) -> tuple[str, list]:
+    """
+    Chunk listesini max karakter sınırına göre birleştirir.
+    Kaynak sayfa/indeks bilgisi doğru olsun diye LLM'e gerçekten giden chunk'ları da döner.
+    """
     context_parts = []
+    included = []
     total_len = 0
 
+    prev_text = ""
     for chunk in chunks:
-        text = _get_chunk_text(chunk)
+        raw = _get_chunk_text(chunk)
+        text = _strip_overlap(prev_text, raw)
+        prev_text = raw
         added_len = len(text) + (len("\n\n---\n\n") if context_parts else 0)
-        if total_len + added_len > MAX_CHARS_PER_CALL:
+        if total_len + added_len > MAX_CHARS_PER_CALL and context_parts:
             break
-        context_parts.append(text)
+        context_parts.append(text[:MAX_CHARS_PER_CALL])
+        included.append(chunk)
         total_len += added_len
 
-    return "\n\n---\n\n".join(context_parts)
+    return "\n\n---\n\n".join(context_parts), included
+
+
+def _collect_chunk_indices(chunks: list) -> list[int]:
+    return [c["index"] for c in chunks if isinstance(c, dict) and c.get("index") is not None]
 
 
 _BOILERPLATE_PATTERNS = [
@@ -377,8 +434,9 @@ def generate_quiz(
             break
 
         count = min(questions_per_group, remaining)
-        context = _build_context(group)
-        source_pages = _collect_source_pages(group)
+        context, included = _build_context(group)
+        source_pages = _collect_source_pages(included)
+        chunk_indices = _collect_chunk_indices(included)
 
         logger.info(
             f"Grup {i + 1}/{len(groups)}: {len(group)} chunk, "
@@ -387,11 +445,15 @@ def generate_quiz(
         )
 
         questions = _call_llm(context, count, detected_lang, difficulty=difficulty)
-        source_chapter = next((c.get("source_chapter") for c in group if isinstance(c, dict) and c.get("source_chapter")), None)
-        progress_percent = next((c.get("progress_percent") for c in group if isinstance(c, dict) and c.get("progress_percent") is not None), None)
+        source_chapter = next((c.get("source_chapter") for c in included if isinstance(c, dict) and c.get("source_chapter")), None)
+        progress_percent = next((c.get("progress_percent") for c in included if isinstance(c, dict) and c.get("progress_percent") is not None), None)
 
         for q in questions:
+            _shuffle_options(q)
             q["source_pages"] = source_pages
+            q["source_chunk_indices"] = chunk_indices
+            q["model"] = LLM_MODEL
+            q["prompt_version"] = PROMPT_VERSION
             if source_chapter:
                 q["source_chapter"] = source_chapter
             if progress_percent is not None:

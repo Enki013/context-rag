@@ -18,6 +18,7 @@ import logging
 import os
 import random
 import sqlite3
+import threading
 from typing import Any, Dict, List, Optional
 
 import sys
@@ -38,8 +39,40 @@ def _get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
     return conn
 
 
+_initialized_dbs: set[str] = set()
+_init_lock = threading.Lock()
+
+# Aynı bölüm için eşzamanlı cache miss'lerde LLM'in iki kez çalışmasını önler (tek süreç içinde).
+_pool_locks: dict[tuple, threading.Lock] = {}
+_pool_locks_guard = threading.Lock()
+
+
+def _pool_lock(db_path: Optional[str], book_id: str, chapter_index: int, difficulty: str) -> threading.Lock:
+    key = (os.path.abspath(db_path or QUIZ_ENGINE_DB_PATH), book_id, chapter_index, difficulty.lower())
+    with _pool_locks_guard:
+        return _pool_locks.setdefault(key, threading.Lock())
+
+
+def _add_missing_columns(cur: sqlite3.Cursor, table: str, columns: Dict[str, str]):
+    existing = {row[1] for row in cur.execute(f"PRAGMA table_info({table})").fetchall()}
+    for name, decl in columns.items():
+        if name not in existing:
+            cur.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
+
 def init_question_bank_db(db_path: Optional[str] = None):
-    """Veritabanı tablolarını ve indekslerini başlatır."""
+    """Veritabanı tablolarını ve indekslerini başlatır (her veritabanı için süreç başına bir kez)."""
+    target = os.path.abspath(db_path or QUIZ_ENGINE_DB_PATH)
+    if target in _initialized_dbs and os.path.exists(target):
+        return
+    with _init_lock:
+        if target in _initialized_dbs and os.path.exists(target):
+            return
+        _create_schema(db_path)
+        _initialized_dbs.add(target)
+
+
+def _create_schema(db_path: Optional[str] = None):
     with _get_connection(db_path) as conn:
         cur = conn.cursor()
         cur.executescript(
@@ -83,6 +116,12 @@ def init_question_bank_db(db_path: Optional[str] = None):
             CREATE INDEX IF NOT EXISTS idx_qb_lookup ON question_bank(book_id, chapter_index, difficulty);
             """
         )
+        # Eski veritabanları için geriye uyumlu şema göçü
+        _add_missing_columns(cur, "question_bank", {
+            "model": "TEXT",
+            "prompt_version": "TEXT",
+            "source_chunk_indices": "TEXT",
+        })
         conn.commit()
     logger.info(f"Soru bankası veritabanı hazır: {db_path or QUIZ_ENGINE_DB_PATH}")
 
@@ -102,10 +141,39 @@ def register_book_content(
     """
     Kitap ve bölümlerini kalıcı veritabanına kaydeder.
     Her bölümün metni ve sayfa aralıkları saklanır.
+
+    Sorular (book_id, chapter_index) ile bağlı olduğu için, bölümleme değiştiğinde
+    (örn. bölüm regex'i güncellendi) eski sorular yanlış bölüme düşer ve spoiler olur.
+    Bu yüzden metni değişen bölümlerin havuzu silinir, artık var olmayan bölümler kaldırılır.
     """
     init_question_bank_db(db_path)
     with _get_connection(db_path) as conn:
         cur = conn.cursor()
+
+        existing_texts = {
+            row["chapter_index"]: row["raw_text"] or ""
+            for row in cur.execute(
+                "SELECT chapter_index, raw_text FROM chapters WHERE book_id = ?", (book_id,)
+            ).fetchall()
+        }
+        new_indices = {ch.get("chapter_index", 1) for ch in chapters}
+
+        stale_indices = [idx for idx in existing_texts if idx not in new_indices]
+        for ch in chapters:
+            idx = ch.get("chapter_index", 1)
+            new_text = ch.get("text") or ch.get("raw_text") or ""
+            if idx in existing_texts and existing_texts[idx] != new_text:
+                stale_indices.append(idx)
+
+        for idx in stale_indices:
+            deleted = cur.execute(
+                "DELETE FROM question_bank WHERE book_id = ? AND chapter_index = ?", (book_id, idx)
+            ).rowcount
+            if deleted:
+                logger.info(f"Bölüm içeriği değişti, {deleted} eski soru silindi (Kitap: {book_id}, Bölüm: {idx})")
+        for idx in existing_texts:
+            if idx not in new_indices:
+                cur.execute("DELETE FROM chapters WHERE book_id = ? AND chapter_index = ?", (book_id, idx))
         cur.execute(
             """
             INSERT INTO books (id, title, author, source_format, total_chapters, total_pages)
@@ -246,9 +314,10 @@ def save_questions_to_pool(
 
             cur.execute(
                 """
-                INSERT INTO question_bank 
-                    (book_id, chapter_index, question, options, correct_answer, explanation, difficulty, source_pages)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO question_bank
+                    (book_id, chapter_index, question, options, correct_answer, explanation, difficulty,
+                     source_pages, model, prompt_version, source_chunk_indices)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     book_id,
@@ -259,6 +328,9 @@ def save_questions_to_pool(
                     q["explanation"],
                     diff.lower(),
                     pages_json,
+                    q.get("model"),
+                    q.get("prompt_version"),
+                    json.dumps(q.get("source_chunk_indices", [])),
                 ),
             )
             saved_count += 1
@@ -327,76 +399,70 @@ def serve_chapter_quiz(
     pool_count = count_pool_questions(book_id, chapter_index, difficulty=difficulty, db_path=db_path)
     cache_hit = pool_count >= count
 
-    if cache_hit:
-        selected_questions = get_cached_questions(
-            book_id, chapter_index, count=count, difficulty=difficulty, db_path=db_path
+    if not cache_hit:
+        generated = _ensure_pool(
+            book_id,
+            chapter_index,
+            difficulty=difficulty,
+            target_count=max(count, min_pool_target),
+            db_path=db_path,
         )
-    else:
-        # Cache Miss: Bölüm metnini bul ve LLM ile üret
-        ch = get_chapter(book_id, chapter_index, db_path=db_path)
-        if not ch or not ch.get("raw_text", "").strip():
-            from config import BOOKS_DIR
-            clean_id = str(book_id).strip("'\"")
+        # Başka bir istek havuzu bu arada doldurduysa yine cache hit sayılır
+        cache_hit = generated == 0
 
-            # 1. Öncelik: data/books/{clean_id}.txt yerel dosyasından oku
-            local_path = os.path.join(BOOKS_DIR, f"{clean_id}.txt")
-            if os.path.isfile(local_path) and os.path.getsize(local_path) > 100:
-                try:
-                    with open(local_path, "r", encoding="utf-8", errors="ignore") as f:
-                        full_text = f.read()
-                    from src.dataset_search import extract_chapters
-                    extracted = extract_chapters(full_text)
-                    if extracted:
-                        register_book_content(
-                            book_id=book_id,
-                            title=f"Kitap #{clean_id}",
-                            author="Bilinmiyor",
-                            source_format="gutenberg",
-                            chapters=extracted,
-                            db_path=db_path,
-                        )
-                        ch = get_chapter(book_id, chapter_index, db_path=db_path)
-                except Exception as e:
-                    logger.warning(f"Yerel metinden bölüm çıkarma hatası ({clean_id}): {e}")
+    selected_questions = get_cached_questions(
+        book_id, chapter_index, count=count, difficulty=difficulty, db_path=db_path
+    )
 
-            # 2. Öncelik: Gutenberg kataloğundan indir
-            if not ch or not ch.get("raw_text", "").strip():
-                from src.dataset_search import get_book_chapters as get_gutenberg_chapters
-                try:
-                    g_info = get_gutenberg_chapters(clean_id)
-                    g_chapters = g_info.get("chapters", [])
-                    if g_chapters:
-                        register_book_content(
-                            book_id=book_id,
-                            title=g_info.get("title", f"Kitap #{clean_id}"),
-                            author=g_info.get("author", ""),
-                            source_format="gutenberg",
-                            chapters=g_chapters,
-                            db_path=db_path,
-                        )
-                        ch = get_chapter(book_id, chapter_index, db_path=db_path)
-                except Exception as e:
-                    logger.warning(f"Gutenberg fallback hatası ({clean_id}): {e}")
+    return _format_served_quiz(book_id, chapter_index, difficulty, cache_hit, selected_questions, hide_answers, db_path)
 
-        if not ch or not ch.get("raw_text", "").strip():
-            raise ValueError(f"Bölüm metni bulunamadı: Kitap {book_id}, Bölüm {chapter_index}")
 
-        raw_text = ch["raw_text"]
+def populate_chapter_pool(
+    book_id: str,
+    chapter_index: int,
+    target_count: int = 10,
+    difficulty: str = "orta",
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Bölüm havuzunu target_count soruya kadar doldurur (havuz kısmen doluysa eksik kadar üretir)."""
+    generated = _ensure_pool(book_id, chapter_index, difficulty, target_count, db_path=db_path)
+    return {
+        "generated": generated,
+        "total_pool_size": count_pool_questions(book_id, chapter_index, difficulty=difficulty, db_path=db_path),
+    }
+
+
+def _ensure_pool(
+    book_id: str,
+    chapter_index: int,
+    difficulty: str,
+    target_count: int,
+    db_path: Optional[str] = None,
+) -> int:
+    """
+    Havuzda target_count kadar soru yoksa eksik kadarını LLM ile üretip kaydeder.
+    Aynı bölüm için kilit tutar; kilidi bekleyen istek, önceki üretim bitince havuzu yeniden sayar.
+    Üretilen soru sayısını döner.
+    """
+    with _pool_lock(db_path, book_id, chapter_index, difficulty):
+        pool_count = count_pool_questions(book_id, chapter_index, difficulty=difficulty, db_path=db_path)
+        needed = target_count - pool_count
+        if needed <= 0:
+            return 0
+
+        raw_text = _load_chapter_text(book_id, chapter_index, db_path=db_path)
         chunks = chunk_text(raw_text)
-        target_generate_count = max(count, min_pool_target)
 
         logger.info(
-            f"Havuz yetersiz ({pool_count}/{count}). LLM ile {target_generate_count} soru üretiliyor..."
+            f"Havuz yetersiz ({pool_count}/{target_count}). LLM ile {needed} soru üretiliyor..."
         )
         new_questions = generate_quiz(
             chunks,
-            num_questions=target_generate_count,
+            num_questions=needed,
             difficulty=difficulty,
             randomize=True,
         )
-
-        # Havuza kaydet
-        save_questions_to_pool(
+        return save_questions_to_pool(
             book_id=book_id,
             chapter_index=chapter_index,
             questions=new_questions,
@@ -404,11 +470,70 @@ def serve_chapter_quiz(
             db_path=db_path,
         )
 
-        selected_questions = get_cached_questions(
-            book_id, chapter_index, count=count, difficulty=difficulty, db_path=db_path
-        )
 
-    # Kitap ve bölüm başlıklarını al
+def _load_chapter_text(book_id: str, chapter_index: int, db_path: Optional[str] = None) -> str:
+    """Bölüm metnini veritabanından okur; yoksa yerel dosyadan veya Gutenberg'den çıkarıp kaydeder."""
+    ch = get_chapter(book_id, chapter_index, db_path=db_path)
+    if ch and (ch.get("raw_text") or "").strip():
+        return ch["raw_text"]
+
+    from config import BOOKS_DIR
+    clean_id = str(book_id).strip("'\"")
+
+    # 1. Öncelik: data/books/{clean_id}.txt yerel dosyasından oku
+    local_path = os.path.join(BOOKS_DIR, f"{clean_id}.txt")
+    if os.path.isfile(local_path) and os.path.getsize(local_path) > 100:
+        try:
+            with open(local_path, "r", encoding="utf-8", errors="ignore") as f:
+                full_text = f.read()
+            from src.dataset_search import extract_chapters
+            extracted = extract_chapters(full_text)
+            if extracted:
+                register_book_content(
+                    book_id=book_id,
+                    title=f"Kitap #{clean_id}",
+                    author="Bilinmiyor",
+                    source_format="gutenberg",
+                    chapters=extracted,
+                    db_path=db_path,
+                )
+                ch = get_chapter(book_id, chapter_index, db_path=db_path)
+        except Exception as e:
+            logger.warning(f"Yerel metinden bölüm çıkarma hatası ({clean_id}): {e}")
+
+    # 2. Öncelik: Gutenberg kataloğundan indir
+    if not ch or not (ch.get("raw_text") or "").strip():
+        from src.dataset_search import get_book_chapters as get_gutenberg_chapters
+        try:
+            g_info = get_gutenberg_chapters(clean_id)
+            g_chapters = g_info.get("chapters", [])
+            if g_chapters:
+                register_book_content(
+                    book_id=book_id,
+                    title=g_info.get("title", f"Kitap #{clean_id}"),
+                    author=g_info.get("author", ""),
+                    source_format="gutenberg",
+                    chapters=g_chapters,
+                    db_path=db_path,
+                )
+                ch = get_chapter(book_id, chapter_index, db_path=db_path)
+        except Exception as e:
+            logger.warning(f"Gutenberg fallback hatası ({clean_id}): {e}")
+
+    if not ch or not (ch.get("raw_text") or "").strip():
+        raise ValueError(f"Bölüm metni bulunamadı: Kitap {book_id}, Bölüm {chapter_index}")
+    return ch["raw_text"]
+
+
+def _format_served_quiz(
+    book_id: str,
+    chapter_index: int,
+    difficulty: str,
+    cache_hit: bool,
+    selected_questions: List[Dict[str, Any]],
+    hide_answers: bool,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
     bk = get_book(book_id, db_path=db_path) or {}
     ch = get_chapter(book_id, chapter_index, db_path=db_path) or {}
 

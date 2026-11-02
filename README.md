@@ -11,6 +11,9 @@ Yapay zeka ve RAG (Retrieval-Augmented Generation) mimarisiyle güçlendirilmiş
 # Sanal ortamı etkinleştirin
 source venv/bin/activate
 
+# Admin uçları (/books/import, /quiz/populate) için anahtar (tanımlı değilse bu uçlar kapalıdır)
+export ADMIN_API_KEY="uzun-rastgele-bir-deger"
+
 # FastAPI sunucusunu başlatın (Port 8000)
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
@@ -158,8 +161,10 @@ Mobil uygulamalar için kullanıcı verisinden bağımsız, kalıcı soru havuzl
 ```http
 POST /api/v1/books/import
 Content-Type: multipart/form-data
+X-Admin-Key: {ADMIN_API_KEY}
 ```
-EPUB veya PDF dosyasını okur, gömülü içindekiler (TOC) ve sayfalarla otomatik bölümler ve sisteme kaydeder.
+EPUB veya PDF dosyasını okur, gömülü içindekiler (TOC) ve sayfalarla otomatik bölümler ve sisteme kaydeder. **Admin uç:** `X-Admin-Key` gerekir.
+Aynı kitap yeniden içe aktarıldığında metni değişen bölümlerin soru havuzu silinir, artık olmayan bölümler kaldırılır (yanlış bölüme düşen soru/spoiler olmasın diye).
 
 #### 🎯 Bölüm Quizi Getir (Cache Hit / On-Demand)
 ```http
@@ -168,6 +173,7 @@ GET /api/v1/quiz/serve?book_id={book_id}&chapter_index={chapter_index}&count=5&d
 - Havuzda soru varsa: **0 milisaniyede** havuzdan rastgele soru döner (`cache_hit: true`).
 - Havuz boşsa: LLM ile ilgili bölüm metninden sorular üretip havuza kaydeder (`cache_hit: false`).
 - `hide_answers=true`: Doğru şıklar ve açıklamalar istemciye sızdırılmaz (`correct_answer: null`).
+- `hide_answers=false` yalnızca geçerli `X-Admin-Key` header'ı ile kabul edilir; aksi halde `403`.
 
 #### 🛡️ Hile Korumalı Cevap Değerlendirme (Soru ID Bazlı)
 ```http
@@ -189,8 +195,9 @@ Mobil istemci doğru şıkkı bilmeden yalnızca soru ID'si ve seçtiği şıkk�
 #### ⚡ Soru Havuzunu Önceden Doldur (Pre-populate Pool)
 ```http
 POST /api/v1/quiz/populate?book_id={book_id}&chapter_index={chapter_index}&target_count=15&difficulty=orta
+X-Admin-Key: {ADMIN_API_KEY}
 ```
-Arka planda (Admin / Cron) bir bölümün soru havuzunu önceden hazırlar.
+Arka planda (Admin / Cron) bir bölümün soru havuzunu `target_count` soruya kadar doldurur; havuz kısmen doluysa yalnızca eksik kadar üretir. **Admin uç:** `X-Admin-Key` gerekir.
 
 ---
 
