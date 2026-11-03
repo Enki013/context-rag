@@ -1,0 +1,842 @@
+{
+ "description": "Grounding doğrulayıcısı için etiketli değerlendirme seti. 'generated' sorular üretici (qwen2.5:14b, PROMPT_VERSION 2026-11-02.2) ile üretildi ve metne bakılarak etiketlendi; 'constructed' sorular geçerli sorulardan bilinçli olarak bozuldu veya elle yazıldı. Etiketler Claude tarafından yapıldı; 'low' güvenli olanlar tartışmalıdır, elle kontrol önerilir.",
+ "contexts": {
+  "1661-ch3": {
+   "book_id": "1661",
+   "chapter_title": "III. A CASE OF IDENTITY",
+   "language": "English",
+   "context": "“But how about Mr. Hosmer Angel? Did he make no attempt to see you?”\n\n“Well, father was going off to France again in a week, and Hosmer wrote\nand said that it would be safer and better not to see each other until\nhe had gone. We could write in the meantime, and he used to write every\nday. I took the letters in in the morning, so there was no need for\nfather to know.”\n\n“Were you engaged to the gentleman at this time?”\n\n“Oh, yes, Mr. Holmes. We were engaged after the first walk that we\ntook. Hosmer—Mr. Angel—was a cashier in an office in Leadenhall\nStreet—and—”\n\n“What office?”\n\n“That’s the worst of it, Mr. Holmes, I don’t know.”\n\n“Where did he live, then?”\n\n“He slept on the premises.”\n\n“And you don’t know his address?”\n\n“No—except that it was Leadenhall Street.”\n\n“Where did you address your letters, then?”\n\n---\n\n“To the Leadenhall Street Post Office, to be left till called for. He\nsaid that if they were sent to the office he would be chaffed by all\nthe other clerks about having letters from a lady, so I offered to\ntypewrite them, like he did his, but he wouldn’t have that, for he said\nthat when I wrote them they seemed to come from me, but when they were\ntypewritten he always felt that the machine had come between us. That\nwill just show you how fond he was of me, Mr. Holmes, and the little\nthings that he would think of.”\n\n“It was most suggestive,” said Holmes. “It has long been an axiom of\nmine that the little things are infinitely the most important. Can you\nremember any other little things about Mr. Hosmer Angel?”\n\n---\n\n“He was a very shy man, Mr. Holmes. He would rather walk with me in the\nevening than in the daylight, for he said that he hated to be\nconspicuous. Very retiring and gentlemanly he was. Even his voice was\ngentle. He’d had the quinsy and swollen glands when he was young, he\ntold me, and it had left him with a weak throat, and a hesitating,\nwhispering fashion of speech. He was always well dressed, very neat and\nplain, but his eyes were weak, just as mine are, and he wore tinted\nglasses against the glare.”\n\n“Well, and what happened when Mr. Windibank, your stepfather, returned\nto France?”\n\n---\n\n“Mr. Hosmer Angel came to the house again and proposed that we should\nmarry before father came back. He was in dreadful earnest and made me\nswear, with my hands on the Testament, that whatever happened I would\nalways be true to him. Mother said he was quite right to make me swear,\nand that it was a sign of his passion. Mother was all in his favour\nfrom the first and was even fonder of him than I was. Then, when they\ntalked of marrying within the week, I began to ask about father; but\nthey both said never to mind about father, but just to tell him\nafterwards, and mother said she would make it all right with him. I\ndidn’t quite like that, Mr. Holmes. It seemed funny that I should ask\nhis leave, as he was only a few years older than me; but I didn’t want\nto do anything on the sly, so I wrote to father at Bordeaux, where the\ncompany has its French offices, but the letter came back to me on the\nvery morning of the wedding.”\n\n“It missed him, then?”"
+  },
+  "84-ch8": {
+   "book_id": "84",
+   "chapter_title": "Chapter 4",
+   "language": "English",
+   "context": "A mind of moderate capacity which closely pursues one study must\ninfallibly arrive at great proficiency in that study; and I, who\ncontinually sought the attainment of one object of pursuit and was\nsolely wrapped up in this, improved so rapidly that at the end of two\nyears I made some discoveries in the improvement of some chemical\ninstruments, which procured me great esteem and admiration at the\nuniversity. When I had arrived at this point and had become as well\nacquainted with the theory and practice of natural philosophy as\ndepended on the lessons of any of the professors at Ingolstadt, my\nresidence there being no longer conducive to my improvements, I thought\nof returning to my friends and my native town, when an incident\nhappened that protracted my stay.\n\n---\n\nOne of the phenomena which had peculiarly attracted my attention was\nthe structure of the human frame, and, indeed, any animal endued with\nlife. Whence, I often asked myself, did the principle of life proceed?\nIt was a bold question, and one which has ever been considered as a\nmystery; yet with how many things are we upon the brink of becoming\nacquainted, if cowardice or carelessness did not restrain our\ninquiries. I revolved these circumstances in my mind and determined\nthenceforth to apply myself more particularly to those branches of\nnatural philosophy which relate to physiology. Unless I had been\nanimated by an almost supernatural enthusiasm, my application to this\nstudy would have been irksome and almost intolerable. To examine the\ncauses of life, we must first have recourse to death. I became\nacquainted with the science of anatomy, but this was not sufficient; I\nmust also observe the natural decay and corruption of the human body.\n\n---\n\nIn my education my father had taken the greatest precautions that my\nmind should be impressed with no supernatural horrors. I do not ever\nremember to have trembled at a tale of superstition or to have feared\nthe apparition of a spirit. Darkness had no effect upon my fancy, and\na churchyard was to me merely the receptacle of bodies deprived of\nlife, which, from being the seat of beauty and strength, had become\nfood for the worm. Now I was led to examine the cause and progress of\nthis decay and forced to spend days and nights in vaults and\ncharnel-houses. My attention was fixed upon every object the most\ninsupportable to the delicacy of the human feelings. I saw how the\nfine form of man was degraded and wasted; I beheld the corruption of\ndeath succeed to the blooming cheek of life; I saw how the worm\n\n---\n\ninherited the wonders of the eye and brain. I paused, examining and\nanalysing all the minutiae of causation, as exemplified in the change\nfrom life to death, and death to life, until from the midst of this\ndarkness a sudden light broke in upon me—a light so brilliant and\nwondrous, yet so simple, that while I became dizzy with the immensity\nof the prospect which it illustrated, I was surprised that among so\nmany men of genius who had directed their inquiries towards the same\nscience, that I alone should be reserved to discover so astonishing a\nsecret.\n\n---\n\nRemember, I am not recording the vision of a madman. The sun does not\nmore certainly shine in the heavens than that which I now affirm is\ntrue. Some miracle might have produced it, yet the stages of the\ndiscovery were distinct and probable. After days and nights of\nincredible labour and fatigue, I succeeded in discovering the cause of\ngeneration and life; nay, more, I became myself capable of bestowing\nanimation upon lifeless matter."
+  },
+  "1342-ch20": {
+   "book_id": "1342",
+   "chapter_title": "CHAPTER XX.",
+   "language": "English",
+   "context": "This information, however, startled Mrs. Bennet: she would have been\nglad to be equally satisfied that her daughter had meant to encourage\nhim by protesting against his proposals, but she dared not believe it,\nand could not help saying so.\n\n“But depend upon it, Mr. Collins,” she added, “that Lizzy shall be\nbrought to reason. I will speak to her about it myself directly. She is\na very headstrong, foolish girl, and does not know her own interest; but\nI will _make_ her know it.”\n\n“Pardon me for interrupting you, madam,” cried Mr. Collins; “but if she\nis really headstrong and foolish, I know not whether she would\naltogether be a very desirable wife to a man in my situation, who\nnaturally looks for happiness in the marriage state. If, therefore, she\nactually persists in rejecting my suit, perhaps it were better not to\nforce her into accepting me, because, if liable to such defects of\ntemper, she could not contribute much to my felicity.”\n\n---\n\n“Sir, you quite misunderstand me,” said Mrs. Bennet, alarmed. “Lizzy is\nonly headstrong in such matters as these. In everything else she is as\ngood-natured a girl as ever lived. I will go directly to Mr. Bennet, and\nwe shall very soon settle it with her, I am sure.”\n\nShe would not give him time to reply, but hurrying instantly to her\nhusband, called out, as she entered the library,--\n\n“Oh, Mr. Bennet, you are wanted immediately; we are all in an uproar.\nYou must come and make Lizzy marry Mr. Collins, for she vows she will\nnot have him; and if you do not make haste he will change his mind and\nnot have _her_.”\n\nMr. Bennet raised his eyes from his book as she entered, and fixed them\non her face with a calm unconcern, which was not in the least altered by\nher communication.\n\n“I have not the pleasure of understanding you,” said he, when she had\nfinished her speech. “Of what are you talking?”\n\n---\n\n“Of Mr. Collins and Lizzy. Lizzy declares she will not have Mr. Collins,\nand Mr. Collins begins to say that he will not have Lizzy.”\n\n“And what am I to do on the occasion? It seems a hopeless business.”\n\n“Speak to Lizzy about it yourself. Tell her that you insist upon her\nmarrying him.”\n\n“Let her be called down. She shall hear my opinion.”\n\nMrs. Bennet rang the bell, and Miss Elizabeth was summoned to the\nlibrary.\n\n“Come here, child,” cried her father as she appeared. “I have sent for\nyou on an affair of importance. I understand that Mr. Collins has made\nyou an offer of marriage. Is it true?”\n\nElizabeth replied that it was.\n\n“Very well--and this offer of marriage you have refused?”\n\n“I have, sir.”\n\n“Very well. We now come to the point. Your mother insists upon your\naccepting it. Is it not so, Mrs. Bennet?”\n\n“Yes, or I will never see her again.”\n\n---\n\n“An unhappy alternative is before you, Elizabeth. From this day you must\nbe a stranger to one of your parents. Your mother will never see you\nagain if you do _not_ marry Mr. Collins, and I will never see you again\nif you _do_.”\n\nElizabeth could not but smile at such a conclusion of such a beginning;\nbut Mrs. Bennet, who had persuaded herself that her husband regarded the\naffair as she wished, was excessively disappointed.\n\n“What do you mean, Mr. Bennet, by talking in this way? You promised me\nto _insist_ upon her marrying him.”\n\n“My dear,” replied her husband, “I have two small favours to request.\nFirst, that you will allow me the free use of my understanding on the\npresent occasion; and, secondly, of my room. I shall be glad to have the\nlibrary to myself as soon as may be.”"
+  },
+  "11-ch2": {
+   "book_id": "11",
+   "chapter_title": "CHAPTER II.",
+   "language": "English",
+   "context": "CHAPTER II.\nThe Pool of Tears\n\n\n“Curiouser and curiouser!” cried Alice (she was so much surprised, that\nfor the moment she quite forgot how to speak good English); “now I’m\nopening out like the largest telescope that ever was! Good-bye, feet!”\n(for when she looked down at her feet, they seemed to be almost out of\nsight, they were getting so far off). “Oh, my poor little feet, I\nwonder who will put on your shoes and stockings for you now, dears? I’m\nsure _I_ shan’t be able! I shall be a great deal too far off to trouble\nmyself about you: you must manage the best way you can;—but I must be\nkind to them,” thought Alice, “or perhaps they won’t walk the way I\nwant to go! Let me see: I’ll give them a new pair of boots every\nChristmas.”\n\nAnd she went on planning to herself how she would manage it. “They must\ngo by the carrier,” she thought; “and how funny it’ll seem, sending\npresents to one’s own feet! And how odd the directions will look!\n\n---\n\n_Alice’s Right Foot, Esq., Hearthrug, near the Fender,_ (_with\n     Alice’s love_).\n\nOh dear, what nonsense I’m talking!”\n\nJust then her head struck against the roof of the hall: in fact she was\nnow more than nine feet high, and she at once took up the little golden\nkey and hurried off to the garden door.\n\nPoor Alice! It was as much as she could do, lying down on one side, to\nlook through into the garden with one eye; but to get through was more\nhopeless than ever: she sat down and began to cry again.\n\n“You ought to be ashamed of yourself,” said Alice, “a great girl like\nyou,” (she might well say this), “to go on crying in this way! Stop\nthis moment, I tell you!” But she went on all the same, shedding\ngallons of tears, until there was a large pool all round her, about\nfour inches deep and reaching half down the hall.\n\n---\n\nAfter a time she heard a little pattering of feet in the distance, and\nshe hastily dried her eyes to see what was coming. It was the White\nRabbit returning, splendidly dressed, with a pair of white kid gloves\nin one hand and a large fan in the other: he came trotting along in a\ngreat hurry, muttering to himself as he came, “Oh! the Duchess, the\nDuchess! Oh! won’t she be savage if I’ve kept her waiting!” Alice felt\nso desperate that she was ready to ask help of any one; so, when the\nRabbit came near her, she began, in a low, timid voice, “If you please,\nsir—” The Rabbit started violently, dropped the white kid gloves and\nthe fan, and skurried away into the darkness as hard as he could go.\n\n---\n\nAlice took up the fan and gloves, and, as the hall was very hot, she\nkept fanning herself all the time she went on talking: “Dear, dear! How\nqueer everything is to-day! And yesterday things went on just as usual.\nI wonder if I’ve been changed in the night? Let me think: was I the\nsame when I got up this morning? I almost think I can remember feeling\na little different. But if I’m not the same, the next question is, Who\nin the world am I? Ah, _that’s_ the great puzzle!” And she began\nthinking over all the children she knew that were of the same age as\nherself, to see if she could have been changed for any of them."
+  },
+  "36-ch5": {
+   "book_id": "36",
+   "chapter_title": "Bölüm 4 (%75)",
+   "language": "English",
+   "context": "My first act on coming to this water was, of course, to slake my\nthirst. I drank a great deal of it and, moved by an impulse, gnawed\nsome fronds of red weed; but they were watery, and had a sickly,\nmetallic taste. I found the water was sufficiently shallow for me to\nwade securely, although the red weed impeded my feet a little; but the\nflood evidently got deeper towards the river, and I turned back to\nMortlake. I managed to make out the road by means of occasional ruins\nof its villas and fences and lamps, and so presently I got out of this\nspate and made my way to the hill going up towards Roehampton and came\nout on Putney Common.\n\n---\n\nHere the scenery changed from the strange and unfamiliar to the\nwreckage of the familiar: patches of ground exhibited the devastation\nof a cyclone, and in a few score yards I would come upon perfectly\nundisturbed spaces, houses with their blinds trimly drawn and doors\nclosed, as if they had been left for a day by the owners, or as if\ntheir inhabitants slept within. The red weed was less abundant; the\ntall trees along the lane were free from the red creeper. I hunted for\nfood among the trees, finding nothing, and I also raided a couple of\nsilent houses, but they had already been broken into and ransacked. I\nrested for the remainder of the daylight in a shrubbery, being, in my\nenfeebled condition, too fatigued to push on.\n\n---\n\nAll this time I saw no human beings, and no signs of the Martians. I\nencountered a couple of hungry-looking dogs, but both hurried\ncircuitously away from the advances I made them. Near Roehampton I had\nseen two human skeletons—not bodies, but skeletons, picked clean—and in\nthe wood by me I found the crushed and scattered bones of several cats\nand rabbits and the skull of a sheep. But though I gnawed parts of\nthese in my mouth, there was nothing to be got from them.\n\n---\n\nAfter sunset I struggled on along the road towards Putney, where I\nthink the Heat-Ray must have been used for some reason. And in the\ngarden beyond Roehampton I got a quantity of immature potatoes,\nsufficient to stay my hunger. From this garden one looked down upon\nPutney and the river. The aspect of the place in the dusk was\nsingularly desolate: blackened trees, blackened, desolate ruins, and\ndown the hill the sheets of the flooded river, red-tinged with the\nweed. And over all—silence. It filled me with indescribable terror to\nthink how swiftly that desolating change had come.\n\n---\n\nFor a time I believed that mankind had been swept out of existence, and\nthat I stood there alone, the last man left alive. Hard by the top of\nPutney Hill I came upon another skeleton, with the arms dislocated and\nremoved several yards from the rest of the body. As I proceeded I\nbecame more and more convinced that the extermination of mankind was,\nsave for such stragglers as myself, already accomplished in this part\nof the world. The Martians, I thought, had gone on and left the country\ndesolated, seeking food elsewhere. Perhaps even now they were\ndestroying Berlin or Paris, or it might be they had gone northward.\n\n\n\n\nVII.\nTHE MAN ON PUTNEY HILL."
+  },
+  "62404-ch6": {
+   "book_id": "62404",
+   "chapter_title": "CHAPITRE IV",
+   "language": "French",
+   "context": "inarticulés, en faisant des grimaces affreuses. Peut-être avait-il\nparlé; mais je n'entendis pas; il étendit une main, sans doute pour me\nretenir, mais j'échappai, et descendis précipitamment les escaliers.\nJe me réfugiai dans la cour de la maison, où je passai le reste de la\nnuit à me promener en long et en large dans la plus grande agitation,\nprêtant attentivement et avec crainte l'oreille au moindre bruit, comme\ns'il m'annonçait l'approche du démon à qui j'avais si malheureusement\ndonné la vie.\n\n---\n\nAh! quel mortel pourrait soutenir l'horreur de cette situation! Une\nmomie à qui on rendrait l'âme, ne serait pas aussi hideuse que ce\nmonstre. Je l'avais observé lorsqu'il n'était pas encore achevé: il\nétait laid alors; mais, lorsque les muscles et les articulations purent\nse mouvoir, il devint si horrible, que le Dante lui-même n'aurait pu\nl'imaginer.\n\nJe passai la nuit dans des transes cruelles. Tantôt mon pouls battait\nsi vite et avec tant de violence, que je sentais la palpitation de tous\nles artères; tantôt je succombais presque de langueur et de faiblesse.\nSaisi d'horreur, je compris avec amertume combien je m'étais abusé:\nles rêves, dont je m'étais bercé si long-temps et avec tant de\nplaisir, étaient maintenant devenus un tourment pour moi. Comment\nn'aurais-je pas éprouvé ce tourment? Mon changement fut si rapide; mes\nespérances furent si cruellement déçues en tous points!\n\n---\n\nLe jour commença enfin à paraître; le temps était sombre et\npluvieux. Cependant, mes yeux découvrirent l'église d'Ingolstadt, ses\nblancs clochers, et l'horloge qui marquait six heures. Le gardien ouvrit\nles portes de la cour qui avait été mon asile pendant la nuit: je\nsortis dans les rues; je me mis à les parcourir avec précipitation\ncomme si je cherchais à éviter le misérable, et en tremblant de le\nrencontrer à chaque détour de rue. Je n'osais retourner à\nl'appartement que j'habitais; et je me sentais entraîné avec une\nvitesse prodigieuse, quoique trempé par la pluie qui tombait à verse\nd'un ciel noir et couvert.\n\nJe continuai pendant quelque temps à marcher ainsi, essayant, par\nl'exercice du corps, de me soulager du poids qui accablait mon esprit.\nJe traversais les rues sans savoir où j'étais, ni ce que je faisais.\nMon cœur palpitait de frayeur, et et je marchais à pas irréguliers,\nsans oser regarder autour de moi:\n\n---\n\nSemblable à celui qui, en se promenant sur une route solitaire, est\nsaisi de crainte et d'horreur, et qui, après s'être une seule fois\nretourné, presse le pas et n'ose plus détourner la tête; il craint\nqu'un ennemi effrayant ne marche derrière lui[2].\n\n\nEn continuant ainsi, j'arrivai enfin devant une auberge où descendaient\nordinairement les voitures et les diligences. Je m'y arrêtai\nmachinalement, et je restai pendant quelques minutes les yeux fixés sur\nune voiture qui arrivait par l'autre bout de la rue, et qui, en\ns'approchant, me parut être la diligence Suisse: elle s'arrêta à\nl'endroit même où j'étais; et, dès que la portière fut ouverte, je\nvis Henri Clerval, qui, en m'apercevant, s'élança dans mes bras. «Mon\ncher Frankenstein, s'écria-t-il, que je suis content de te voir! que je\nsuis heureux de te rencontrer ici au moment même de mon arrivée»!"
+  }
+ },
+ "items": [
+  {
+   "id": "1661-ch3-g01",
+   "context_id": "1661-ch3",
+   "source": "generated",
+   "question": "Why did Mr. Hosmer Angel suggest not seeing each other until Mr. Jane's father left for France?",
+   "options": [
+    "A) To avoid being mocked",
+    "B) To avoid being recognized",
+    "C) To avoid being questioned",
+    "D) To avoid being discovered"
+   ],
+   "correct_answer": "D",
+   "label": "invalid",
+   "error_type": "ambiguous",
+   "confidence": "high",
+   "note": "Metin sadece 'safer and better' diyor; sebep belirtilmiyor. 'Mr. Jane' adı da metinde yok."
+  },
+  {
+   "id": "1661-ch3-g02",
+   "context_id": "1661-ch3",
+   "source": "generated",
+   "question": "What was Mr. Hosmer Angel's occupation?",
+   "options": [
+    "A) Banker",
+    "B) Clerk",
+    "C) Lawyer",
+    "D) Cashier"
+   ],
+   "correct_answer": "D",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": "Metin açıkça 'a cashier' diyor."
+  },
+  {
+   "id": "1661-ch3-g03",
+   "context_id": "1661-ch3",
+   "source": "generated",
+   "question": "Why did Mr. Hosmer Angel prefer to walk with the narrator in the evening?",
+   "options": [
+    "A) To avoid being recognized",
+    "B) To avoid being mocked",
+    "C) To avoid being seen",
+    "D) To avoid being questioned"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "ambiguous",
+   "confidence": "high",
+   "note": "Metin 'hated to be conspicuous' diyor; 'recognized' ve 'seen' ikisi de uyuyor."
+  },
+  {
+   "id": "1661-ch3-g04",
+   "context_id": "1661-ch3",
+   "source": "generated",
+   "question": "What did Mr. Hosmer Angel request the narrator to do with their hands on the Testament?",
+   "options": [
+    "A) To swear loyalty",
+    "B) To swear truthfulness",
+    "C) To swear fidelity",
+    "D) To swear obedience"
+   ],
+   "correct_answer": "C",
+   "label": "invalid",
+   "error_type": "ambiguous",
+   "confidence": "high",
+   "note": "'always be true to him': fidelity, loyalty ve truthfulness birbirine çok yakın."
+  },
+  {
+   "id": "1661-ch3-g05",
+   "context_id": "1661-ch3",
+   "source": "generated",
+   "question": "What happened to the letter sent to Mr. Jane's father regarding the wedding?",
+   "options": [
+    "A) It was lost",
+    "B) It was delayed",
+    "C) It was delivered",
+    "D) It was returned"
+   ],
+   "correct_answer": "D",
+   "label": "invalid",
+   "error_type": "premise_error",
+   "confidence": "low",
+   "note": "Cevap doğru (mektup geri döndü) ama soru metinde olmayan 'Mr. Jane' adını uyduruyor."
+  },
+  {
+   "id": "84-ch8-g01",
+   "context_id": "84-ch8",
+   "source": "generated",
+   "question": "What was the primary focus of the narrator's studies after becoming proficient in natural philosophy?",
+   "options": [
+    "A) The causes of life and death",
+    "B) The improvement of chemical instruments",
+    "C) The theory of relativity",
+    "D) The history of medicine"
+   ],
+   "correct_answer": "A",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": ""
+  },
+  {
+   "id": "84-ch8-g02",
+   "context_id": "84-ch8",
+   "source": "generated",
+   "question": "Why did the narrator decide to study the causes of life and death?",
+   "options": [
+    "A) To study the impact of diseases",
+    "B) To advance his career at the university",
+    "C) To understand the principles of chemistry",
+    "D) To pursue a mystery that fascinated him"
+   ],
+   "correct_answer": "D",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": ""
+  },
+  {
+   "id": "84-ch8-g03",
+   "context_id": "84-ch8",
+   "source": "generated",
+   "question": "What did the narrator observe to understand the stages of decay and death?",
+   "options": [
+    "A) The stars in the night sky",
+    "B) Chemical reactions in a laboratory",
+    "C) The growth of plants",
+    "D) The decay of the human body"
+   ],
+   "correct_answer": "D",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": ""
+  },
+  {
+   "id": "84-ch8-g04",
+   "context_id": "84-ch8",
+   "source": "generated",
+   "question": "What was the result of the narrator's extensive studies and experiments?",
+   "options": [
+    "A) He became capable of bestowing animation upon lifeless matter",
+    "B) He discovered the principles of electricity",
+    "C) He wrote a book on anatomy",
+    "D) He improved the design of microscopes"
+   ],
+   "correct_answer": "A",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": ""
+  },
+  {
+   "id": "84-ch8-g05",
+   "context_id": "84-ch8",
+   "source": "generated",
+   "question": "What attitude did the narrator's father have towards supernatural tales?",
+   "options": [
+    "A) He was fascinated by them",
+    "B) He was indifferent to them",
+    "C) He encouraged his son to read them",
+    "D) He took precautions to prevent his son from being frightened by them"
+   ],
+   "correct_answer": "D",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": ""
+  },
+  {
+   "id": "1342-ch20-g01",
+   "context_id": "1342-ch20",
+   "source": "generated",
+   "question": "What does Mrs. Bennet believe about Elizabeth's behavior regarding Mr. Collins' proposal?",
+   "options": [
+    "A) Elizabeth refused Mr. Collins' proposal because she is headstrong and foolish",
+    "B) Elizabeth refused Mr. Collins' proposal out of respect for her parents",
+    "C) Elizabeth refused Mr. Collins' proposal because she dislikes him",
+    "D) Elizabeth refused Mr. Collins' proposal out of ignorance of her own best interests"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "ambiguous",
+   "confidence": "high",
+   "note": "'headstrong, foolish girl, and does not know her own interest': A ve D ikisi de doğru."
+  },
+  {
+   "id": "1342-ch20-g02",
+   "context_id": "1342-ch20",
+   "source": "generated",
+   "question": "What is Mr. Bennet's attitude towards the situation involving Mr. Collins and Elizabeth?",
+   "options": [
+    "A) Mr. Bennet is angry at Elizabeth for refusing Mr. Collins",
+    "B) Mr. Bennet is indifferent and wants to leave the decision to Elizabeth",
+    "C) Mr. Bennet is excited about the prospect of the marriage",
+    "D) Mr. Bennet is upset and demands Elizabeth to marry Mr. Collins"
+   ],
+   "correct_answer": "B",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "low",
+   "note": "'calm unconcern' var; 'kararı Elizabeth'e bırakmak' yorum gerektiriyor ama en iyi şık bu."
+  },
+  {
+   "id": "1342-ch20-g03",
+   "context_id": "1342-ch20",
+   "source": "generated",
+   "question": "What does Mrs. Bennet intend to do after her conversation with Mr. Collins?",
+   "options": [
+    "A) She plans to talk to Mr. Bennet about the matter",
+    "B) She decides to marry Mr. Collins herself",
+    "C) She intends to leave the house immediately",
+    "D) She wants to apologize to Mr. Collins"
+   ],
+   "correct_answer": "A",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": "'I will go directly to Mr. Bennet'."
+  },
+  {
+   "id": "1342-ch20-g04",
+   "context_id": "1342-ch20",
+   "source": "generated",
+   "question": "How does Mr. Bennet respond when Mrs. Bennet informs him about Elizabeth's refusal?",
+   "options": [
+    "A) Mr. Bennet asks Elizabeth to come down immediately",
+    "B) Mr. Bennet dismisses the matter and continues reading",
+    "C) Mr. Bennet laughs at Mrs. Bennet's concerns",
+    "D) Mr. Bennet immediately agrees to talk to Elizabeth"
+   ],
+   "correct_answer": "B",
+   "label": "invalid",
+   "error_type": "wrong_key",
+   "confidence": "high",
+   "note": "Mr. Bennet okumaya devam etmiyor; 'Let her be called down' diyor. Doğru şık A."
+  },
+  {
+   "id": "1342-ch20-g05",
+   "context_id": "1342-ch20",
+   "source": "generated",
+   "question": "What is the ultimatum given to Elizabeth by her parents?",
+   "options": [
+    "A) Either marry Mr. Collins or marry someone her parents approve of",
+    "B) Either marry Mr. Collins or never see her father again",
+    "C) Either marry Mr. Collins or never see her mother again",
+    "D) Either marry Mr. Collins or leave the house"
+   ],
+   "correct_answer": "C",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": "Annenin tarafı doğru; B şıkkı ters çevrilmiş."
+  },
+  {
+   "id": "11-ch2-g01",
+   "context_id": "11-ch2",
+   "source": "generated",
+   "question": "Why did Alice decide to give her feet new boots every Christmas?",
+   "options": [
+    "A) To keep her feet happy and well-cared for",
+    "B) To ensure her feet would continue to follow her",
+    "C) To celebrate the growth of her feet",
+    "D) To impress the White Rabbit"
+   ],
+   "correct_answer": "B",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": "'or perhaps they won't walk the way I want to go'."
+  },
+  {
+   "id": "11-ch2-g02",
+   "context_id": "11-ch2",
+   "source": "generated",
+   "question": "What did Alice do immediately after her head struck the roof of the hall?",
+   "options": [
+    "A) She started crying",
+    "B) She went to the garden door",
+    "C) She planned to send presents to her feet",
+    "D) She ran after the White Rabbit"
+   ],
+   "correct_answer": "B",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": "'hurried off to the garden door'."
+  },
+  {
+   "id": "11-ch2-g03",
+   "context_id": "11-ch2",
+   "source": "generated",
+   "question": "What did Alice think about herself when she was crying?",
+   "options": [
+    "A) She was proud of crying",
+    "B) She wanted to cry more",
+    "C) She thought it was funny to cry",
+    "D) She felt ashamed and told herself to stop crying"
+   ],
+   "correct_answer": "D",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": ""
+  },
+  {
+   "id": "11-ch2-g04",
+   "context_id": "11-ch2",
+   "source": "generated",
+   "question": "What was the White Rabbit carrying when Alice first saw him?",
+   "options": [
+    "A) A map",
+    "B) A letter",
+    "C) A pair of boots",
+    "D) A pair of white kid gloves and a large fan"
+   ],
+   "correct_answer": "D",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": ""
+  },
+  {
+   "id": "11-ch2-g05",
+   "context_id": "11-ch2",
+   "source": "generated",
+   "question": "What was Alice questioning about herself?",
+   "options": [
+    "A) If she had lost her shoes",
+    "B) If she had grown taller",
+    "C) If she had been changed for another child",
+    "D) If she was still the same person"
+   ],
+   "correct_answer": "D",
+   "label": "invalid",
+   "error_type": "ambiguous",
+   "confidence": "high",
+   "note": "'changed for any of them' ve 'Who in the world am I?': C ve D ikisi de doğru."
+  },
+  {
+   "id": "36-ch5-g01",
+   "context_id": "36-ch5",
+   "source": "generated",
+   "question": "What did the narrator do first upon reaching the water?",
+   "options": [
+    "A) He tried to swim",
+    "B) He searched for food",
+    "C) He drank a lot of it",
+    "D) He rested on the shore"
+   ],
+   "correct_answer": "C",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": ""
+  },
+  {
+   "id": "36-ch5-g02",
+   "context_id": "36-ch5",
+   "source": "generated",
+   "question": "How did the narrator describe the red weed when he tasted it?",
+   "options": [
+    "A) It was very tasty",
+    "B) It had a metallic, sickly taste",
+    "C) It was sweet and refreshing",
+    "D) It was bland and tasteless"
+   ],
+   "correct_answer": "B",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": ""
+  },
+  {
+   "id": "36-ch5-g03",
+   "context_id": "36-ch5",
+   "source": "generated",
+   "question": "What did the narrator find in Putney after sunset?",
+   "options": [
+    "A) A large group of people",
+    "B) A quantity of immature potatoes",
+    "C) A garden with ripe fruits",
+    "D) A fully stocked grocery store"
+   ],
+   "correct_answer": "B",
+   "label": "invalid",
+   "error_type": "premise_error",
+   "confidence": "low",
+   "note": "Patatesler Putney'de değil, 'the garden beyond Roehampton'da bulunuyor."
+  },
+  {
+   "id": "36-ch5-g04",
+   "context_id": "36-ch5",
+   "source": "generated",
+   "question": "What was the narrator's initial reaction upon seeing the devastation?",
+   "options": [
+    "A) He felt relieved",
+    "B) He was terrified",
+    "C) He was excited",
+    "D) He was indifferent"
+   ],
+   "correct_answer": "B",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": "'indescribable terror'."
+  },
+  {
+   "id": "36-ch5-g05",
+   "context_id": "36-ch5",
+   "source": "generated",
+   "question": "What was the state of the houses near Putney?",
+   "options": [
+    "A) All houses were abandoned with open doors",
+    "B) All houses were intact",
+    "C) Some houses were destroyed, some undisturbed",
+    "D) All houses were occupied"
+   ],
+   "correct_answer": "C",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": "Harap alanlar ve 'perfectly undisturbed spaces, houses...'."
+  },
+  {
+   "id": "62404-ch6-g01",
+   "context_id": "62404-ch6",
+   "source": "generated",
+   "question": "Pourquoi le narrateur a-t-il quitté précipitamment l'endroit après la scène avec la créature?",
+   "options": [
+    "A) Il voulait chercher de l'aide",
+    "B) Il avait peur de la créature",
+    "C) Il était fatigué et voulait dormir",
+    "D) Il avait terminé son travail et voulait rentrer chez lui"
+   ],
+   "correct_answer": "B",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": ""
+  },
+  {
+   "id": "62404-ch6-g02",
+   "context_id": "62404-ch6",
+   "source": "generated",
+   "question": "Quel sentiment principal ressent le narrateur au moment où il se réfugie dans la cour?",
+   "options": [
+    "A) Joie",
+    "B) Anxiété",
+    "C) Indifférence",
+    "D) Excitation"
+   ],
+   "correct_answer": "B",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": "'dans la plus grande agitation... avec crainte'."
+  },
+  {
+   "id": "62404-ch6-g03",
+   "context_id": "62404-ch6",
+   "source": "generated",
+   "question": "Qu'est-ce qui a causé le changement rapide du narrateur?",
+   "options": [
+    "A) Une maladie grave",
+    "B) La mort d'un proche",
+    "C) La création de la créature",
+    "D) Un échec professionnel"
+   ],
+   "correct_answer": "C",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": "Yaratığın canlanması hayallerini yıkıyor; makul çıkarım."
+  },
+  {
+   "id": "62404-ch6-g04",
+   "context_id": "62404-ch6",
+   "source": "generated",
+   "question": "Pourquoi le narrateur ne retourne-t-il pas à son appartement?",
+   "options": [
+    "A) Il a déménagé",
+    "B) Il a peur de la créature",
+    "C) Il a perdu ses clés",
+    "D) Il est en train de le rénover"
+   ],
+   "correct_answer": "B",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "high",
+   "note": "'Je n'osais retourner'; yaratıkla karşılaşmaktan korkuyor."
+  },
+  {
+   "id": "62404-ch6-g05",
+   "context_id": "62404-ch6",
+   "source": "generated",
+   "question": "Comment se manifeste l'anxiété du narrateur lorsqu'il marche dans les rues?",
+   "options": [
+    "A) Il marche régulièrement et calmement",
+    "B) Il court rapidement et sans but",
+    "C) Il marche avec précipitation et tremble",
+    "D) Il se déplace lentement et avec prudence"
+   ],
+   "correct_answer": "C",
+   "label": "valid",
+   "error_type": null,
+   "confidence": "low",
+   "note": "C metne en yakın; ama 'vitesse prodigieuse... sans savoir où j'étais' B'yi de destekliyor."
+  },
+  {
+   "id": "84-ch8-c01",
+   "context_id": "84-ch8",
+   "source": "constructed",
+   "question": "What was the result of the narrator's extensive studies and experiments?",
+   "options": [
+    "A) He became capable of bestowing animation upon lifeless matter",
+    "B) He discovered the principles of electricity",
+    "C) He wrote a book on anatomy",
+    "D) He improved the design of microscopes"
+   ],
+   "correct_answer": "B",
+   "label": "invalid",
+   "error_type": "wrong_key",
+   "confidence": "high",
+   "note": "Geçerli soru 4'in anahtarı bilerek 'electricity' şıkkına çevrildi."
+  },
+  {
+   "id": "11-ch2-c02",
+   "context_id": "11-ch2",
+   "source": "constructed",
+   "question": "What was the White Rabbit carrying when Alice first saw him?",
+   "options": [
+    "A) A map",
+    "B) A letter",
+    "C) A pair of boots",
+    "D) A pair of white kid gloves and a large fan"
+   ],
+   "correct_answer": "C",
+   "label": "invalid",
+   "error_type": "wrong_key",
+   "confidence": "high",
+   "note": "Geçerli soru 4'in anahtarı bilerek 'boots' şıkkına çevrildi."
+  },
+  {
+   "id": "36-ch5-c03",
+   "context_id": "36-ch5",
+   "source": "constructed",
+   "question": "How did the narrator describe the red weed when he tasted it?",
+   "options": [
+    "A) It was very tasty",
+    "B) It had a metallic, sickly taste",
+    "C) It was sweet and refreshing",
+    "D) It was bland and tasteless"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "wrong_key",
+   "confidence": "high",
+   "note": "Geçerli soru 2'in anahtarı bilerek 'tasty' şıkkına çevrildi."
+  },
+  {
+   "id": "1342-ch20-c04",
+   "context_id": "1342-ch20",
+   "source": "constructed",
+   "question": "What does Mrs. Bennet intend to do after her conversation with Mr. Collins?",
+   "options": [
+    "A) She plans to talk to Mr. Bennet about the matter",
+    "B) She decides to marry Mr. Collins herself",
+    "C) She intends to leave the house immediately",
+    "D) She wants to apologize to Mr. Collins"
+   ],
+   "correct_answer": "B",
+   "label": "invalid",
+   "error_type": "wrong_key",
+   "confidence": "high",
+   "note": "Geçerli soru 3'in anahtarı bilerek 'marry Mr. Collins herself' şıkkına çevrildi."
+  },
+  {
+   "id": "62404-ch6-c05",
+   "context_id": "62404-ch6",
+   "source": "constructed",
+   "question": "Quel sentiment principal ressent le narrateur au moment où il se réfugie dans la cour?",
+   "options": [
+    "A) Joie",
+    "B) Anxiété",
+    "C) Indifférence",
+    "D) Excitation"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "wrong_key",
+   "confidence": "high",
+   "note": "Geçerli soru 2'in anahtarı bilerek 'Joie' şıkkına çevrildi."
+  },
+  {
+   "id": "1661-ch3-c06",
+   "context_id": "1661-ch3",
+   "source": "constructed",
+   "question": "What was Mr. Hosmer Angel's occupation?",
+   "options": [
+    "A) Banker",
+    "B) Clerk",
+    "C) Lawyer",
+    "D) Cashier"
+   ],
+   "correct_answer": "C",
+   "label": "invalid",
+   "error_type": "wrong_key",
+   "confidence": "high",
+   "note": "Geçerli soru 2'in anahtarı bilerek 'Lawyer' şıkkına çevrildi."
+  },
+  {
+   "id": "11-ch2-c07",
+   "context_id": "11-ch2",
+   "source": "constructed",
+   "question": "What colour was the White Rabbit's waistcoat?",
+   "options": [
+    "A) Red",
+    "B) Blue",
+    "C) Yellow",
+    "D) Green"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "unanswerable",
+   "confidence": "high",
+   "note": "Yelek bu metinde geçmiyor."
+  },
+  {
+   "id": "84-ch8-c08",
+   "context_id": "84-ch8",
+   "source": "constructed",
+   "question": "In which city did the narrator's friend Clerval study medicine?",
+   "options": [
+    "A) Geneva",
+    "B) Ingolstadt",
+    "C) Paris",
+    "D) London"
+   ],
+   "correct_answer": "B",
+   "label": "invalid",
+   "error_type": "unanswerable",
+   "confidence": "high",
+   "note": "Clerval bu metinde geçmiyor."
+  },
+  {
+   "id": "36-ch5-c09",
+   "context_id": "36-ch5",
+   "source": "constructed",
+   "question": "How many Martian fighting-machines did the narrator see near Putney?",
+   "options": [
+    "A) Two",
+    "B) Three",
+    "C) Four",
+    "D) Five"
+   ],
+   "correct_answer": "B",
+   "label": "invalid",
+   "error_type": "unanswerable",
+   "confidence": "high",
+   "note": "Metin 'no signs of the Martians' diyor."
+  },
+  {
+   "id": "1342-ch20-c10",
+   "context_id": "1342-ch20",
+   "source": "constructed",
+   "question": "What gift did Mr. Collins bring Elizabeth with his proposal?",
+   "options": [
+    "A) A book of sermons",
+    "B) A pair of gloves",
+    "C) A locket",
+    "D) Flowers"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "unanswerable",
+   "confidence": "high",
+   "note": "Hediye metinde geçmiyor."
+  },
+  {
+   "id": "1661-ch3-c11",
+   "context_id": "1661-ch3",
+   "source": "constructed",
+   "question": "Why did Hosmer Angel ask Miss Sutherland to typewrite her letters to him?",
+   "options": [
+    "A) He said his fellow clerks would read handwritten letters",
+    "B) He had weak eyes",
+    "C) He said typewritten letters felt more personal",
+    "D) He wanted to keep copies"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "premise_error",
+   "confidence": "high",
+   "note": "Tersine: kendi yazmasını istedi, daktiloyu reddetti."
+  },
+  {
+   "id": "84-ch8-c12",
+   "context_id": "84-ch8",
+   "source": "constructed",
+   "question": "Why did the narrator's father encourage him to read tales of superstition?",
+   "options": [
+    "A) To harden him against fear",
+    "B) To prepare him for medicine",
+    "C) To teach him history",
+    "D) To entertain him"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "premise_error",
+   "confidence": "high",
+   "note": "Tersine: babası batıl korkulardan korumak için önlem aldı."
+  },
+  {
+   "id": "11-ch2-c13",
+   "context_id": "11-ch2",
+   "source": "constructed",
+   "question": "Why did the White Rabbit hand Alice his gloves and fan?",
+   "options": [
+    "A) Because the hall was very hot",
+    "B) Because he wanted her help with the Duchess",
+    "C) Because she asked for them",
+    "D) Because he was too small to carry them"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "premise_error",
+   "confidence": "high",
+   "note": "Tavşan eldiven ve yelpazeyi vermedi; korkup düşürdü."
+  },
+  {
+   "id": "36-ch5-c14",
+   "context_id": "36-ch5",
+   "source": "constructed",
+   "question": "Why did the narrator follow the two hungry dogs towards Roehampton?",
+   "options": [
+    "A) He hoped they would lead him to food",
+    "B) He wanted company",
+    "C) He thought they belonged to survivors",
+    "D) He was lost"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "premise_error",
+   "confidence": "high",
+   "note": "Köpekler ondan kaçtı; onları takip etmedi."
+  },
+  {
+   "id": "11-ch2-c15",
+   "context_id": "11-ch2",
+   "source": "constructed",
+   "question": "What was the White Rabbit carrying when he returned?",
+   "options": [
+    "A) A pair of white kid gloves",
+    "B) A large fan",
+    "C) A pocket watch",
+    "D) A map"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "ambiguous",
+   "confidence": "high",
+   "note": "Eldiven ve yelpaze ikisi de doğru."
+  },
+  {
+   "id": "1342-ch20-c16",
+   "context_id": "1342-ch20",
+   "source": "constructed",
+   "question": "How was Elizabeth summoned to the library?",
+   "options": [
+    "A) Mrs. Bennet rang the bell",
+    "B) Her father sent for her",
+    "C) Mr. Collins fetched her",
+    "D) A letter was left for her"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "ambiguous",
+   "confidence": "high",
+   "note": "'Mrs. Bennet rang the bell' ve babası 'I have sent for you' diyor: A ve B ikisi de doğru."
+  },
+  {
+   "id": "36-ch5-c17",
+   "context_id": "36-ch5",
+   "source": "constructed",
+   "question": "What did the narrator do when he first reached the water?",
+   "options": [
+    "A) He drank a great deal of it",
+    "B) He slaked his thirst",
+    "C) He swam across to Mortlake",
+    "D) He washed his wounds"
+   ],
+   "correct_answer": "A",
+   "label": "invalid",
+   "error_type": "ambiguous",
+   "confidence": "high",
+   "note": "A ve B aynı şeyi söylüyor."
+  }
+ ]
+}

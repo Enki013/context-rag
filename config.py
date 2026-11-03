@@ -20,6 +20,18 @@ DEFAULT_QUIZ_COUNT = 5
 DEFAULT_DIFFICULTY = "orta"
 DEFAULT_QUESTION_TYPE = "multiple_choice"
 
+# Grounding doğrulaması: her soru ikinci bir LLM çağrısıyla metne karşı kontrol edilir.
+# Kapatmak için QUIZ_VERIFY_ANSWERS=0 (daha hızlı, ama yanlış cevaplı sorular geçebilir).
+VERIFY_ANSWERS = os.environ.get("QUIZ_VERIFY_ANSWERS", "1") != "0"
+# Doğrulayıcı model. Üreticiden farklı bir aile seçildi: evals/verifier_eval.json üzerinde
+# gemma4:31b (thinking kapalı) hatalı soruların 22/25'ini, qwen2.5:14b 18/25'ini yakaladı.
+# Model kurulu değilse doğrulama başarısız olur ve sorular atılır: `ollama pull gemma4:31b`
+# veya QUIZ_VERIFY_MODEL=qwen2.5:14b ile üreticiyi kullanın.
+VERIFY_MODEL = os.environ.get("QUIZ_VERIFY_MODEL", "gemma4:31b")
+# "0" (varsayılan): thinking kapalı, ~10 kat hızlı ve thinking desteklemeyen modellerde de çalışır.
+# "1": thinking açık (yalnızca destekleyen modellerde). "auto": modelin kendi varsayılanı.
+VERIFY_THINK = {"0": False, "1": True}.get(os.environ.get("QUIZ_VERIFY_THINK", "0"))
+
 # Contextual Retrieval
 CONTEXTUAL_LLM_THRESHOLD = 50  # Bu chunk sayısının altında LLM ile bağlam üretilir, üstünde deterministic
 

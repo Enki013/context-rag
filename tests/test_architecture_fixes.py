@@ -86,7 +86,8 @@ def test_duplicate_options_rejected():
 
 def test_generate_quiz_adds_provenance_and_shuffles():
     chunks = [{"index": i, "text": f"Metin parçası {i}. " * 20, "source_pages": [i + 1]} for i in range(3)]
-    with patch("src.quiz_generator._call_llm", return_value=[_q(correct="A")]):
+    with patch("src.quiz_generator._call_llm", return_value=[_q(correct="A")]), \
+            patch("src.quiz_generator.VERIFY_ANSWERS", False):
         out = generate_quiz(chunks, num_questions=1)
     q = out[0]
     assert q["source_chunk_indices"] == [0, 1, 2]
@@ -252,3 +253,178 @@ def test_rebalance_script_keeps_correct_text(temp_db):
     for q in get_cached_questions("b1", 1, count=500, db_path=temp_db):
         if len(q["options"]) == 4:
             assert q["options"]["ABCD".index(q["correct_answer"])].endswith("Ankara")
+
+
+# ─── Grounding doğrulaması ──────────────────────────────────────────────────
+
+from src.quiz_generator import _evidence_in_context, _generate_verified_for_group, _verify_questions
+
+CTX = (
+    "To-day the King of Bohemia came to Baker Street. He said: \u201cThere is the photograph, "
+    "which she threatens to send to my bride.\u201d Holmes promised to recover it within three days."
+)
+
+
+def _chat_reply(answers):
+    import json as _json
+    return {"message": {"content": _json.dumps({"answers": answers})}}
+
+
+def _photo_q(correct_text="A photograph", correct="A"):
+    opts = ["A) A photograph", "B) Some letters", "C) A ring", "D) A crown"]
+    return {"question": "What does the King want Holmes to recover?", "options": opts,
+            "correct_answer": correct, "explanation": "."}
+
+
+def test_evidence_matching_is_tolerant_but_strict():
+    assert _evidence_in_context('"There is the photograph, which she threatens"', CTX)  # düz tırnak vs kıvrık
+    assert _evidence_in_context("came to Baker Street ... recover it within three days", CTX)
+    assert not _evidence_in_context("the King wanted his letters back", CTX)  # metinde yok
+    assert not _evidence_in_context("Baker", CTX)  # çok kısa
+    assert not _evidence_in_context("", CTX)
+
+
+def test_verify_keeps_supported_question_with_evidence():
+    reply = _chat_reply([{"id": 1, "answer": "A", "evidence": "There is the photograph, which she threatens"}])
+    with patch("src.quiz_generator.ollama_client.chat", return_value=reply):
+        out = _verify_questions([_photo_q()], CTX)
+    assert len(out) == 1 and out[0]["evidence"].startswith("There is the photograph")
+
+
+def test_verify_rejects_wrong_marked_answer():
+    # Generator 'letters' (B) işaretlemiş, doğrulayıcı metne göre A diyor -> reddedilmeli
+    reply = _chat_reply([{"id": 1, "answer": "A", "evidence": "There is the photograph, which she threatens"}])
+    with patch("src.quiz_generator.ollama_client.chat", return_value=reply):
+        assert _verify_questions([_photo_q(correct="B")], CTX) == []
+
+
+def test_verify_rejects_none_and_fabricated_evidence():
+    q1, q2 = _photo_q(), _photo_q()
+    reply = _chat_reply([
+        {"id": 1, "answer": "NONE", "evidence": ""},
+        {"id": 2, "answer": "A", "evidence": "The King demanded the photograph immediately"},  # uydurma alıntı
+    ])
+    with patch("src.quiz_generator.ollama_client.chat", return_value=reply):
+        assert _verify_questions([q1, q2], CTX) == []
+
+
+def test_verify_fails_closed_on_unparseable_output():
+    bad = {"message": {"content": "üzgünüm, yapamam"}}
+    with patch("src.quiz_generator.ollama_client.chat", return_value=bad) as chat:
+        assert _verify_questions([_photo_q()], CTX) == []
+    assert chat.call_count == 2  # bir kez yeniden denedi
+
+
+def test_group_generation_retries_when_verification_drops_questions():
+    calls = {"n": 0}
+
+    def fake_llm(context, count, language, difficulty="orta"):
+        calls["n"] += 1
+        return [dict(_photo_q(), question=f"Soru {calls['n']}-{i} nedir?") for i in range(count)]
+
+    def fake_verify(questions, context):
+        return questions[:1]  # her turda yalnızca biri geçiyor
+
+    with patch("src.quiz_generator._call_llm", side_effect=fake_llm), \
+            patch("src.quiz_generator._verify_questions", side_effect=fake_verify), \
+            patch("src.quiz_generator.VERIFY_ANSWERS", True):
+        out = _generate_verified_for_group(CTX, 3, "English", "orta")
+    assert calls["n"] == 2 and len(out) == 2
+
+
+def test_evidence_saved_to_pool(temp_db):
+    _register(temp_db, ["bir"])
+    save_questions_to_pool("b1", 1, [dict(_q(), evidence="kanıt cümlesi")], db_path=temp_db)
+    assert get_cached_questions("b1", 1, count=1, db_path=temp_db)[0]["evidence"] == "kanıt cümlesi"
+
+
+# ─── Doğrulayıcı değerlendirme seti ─────────────────────────────────────────
+
+
+def test_verifier_eval_dataset_is_well_formed():
+    from scripts.eval_verifier import load_dataset
+
+    data = load_dataset()
+    items, contexts = data["items"], data["contexts"]
+    assert len(items) >= 40
+    assert len({i["id"] for i in items}) == len(items)
+    for it in items:
+        assert it["context_id"] in contexts
+        assert len(it["options"]) == 4 and it["correct_answer"] in "ABCD"
+        assert it["label"] in ("valid", "invalid") and it["confidence"] in ("high", "low")
+        if it["label"] == "invalid":
+            assert it["error_type"] in ("ambiguous", "premise_error", "wrong_key", "unanswerable")
+        else:
+            assert it["error_type"] is None
+    labels = [i["label"] for i in items]
+    assert labels.count("valid") >= 15 and labels.count("invalid") >= 15
+
+
+def test_eval_summary_and_combine(tmp_path):
+    import json as _json
+    from scripts.eval_verifier import combine, summarize
+
+    base = [
+        {"id": "a", "label": "invalid", "error_type": "wrong_key", "confidence": "high", "sec": 1.0},
+        {"id": "b", "label": "valid", "error_type": None, "confidence": "high", "sec": 1.0},
+        {"id": "c", "label": "invalid", "error_type": "ambiguous", "confidence": "low", "sec": 1.0},
+    ]
+    run1 = [dict(r, accepted=acc, correct=acc == (r["label"] == "valid")) for r, acc in zip(base, [False, True, True])]
+    run2 = [dict(r, accepted=acc, correct=acc == (r["label"] == "valid")) for r, acc in zip(base, [True, True, False])]
+    s = summarize(run1, "m1")
+    assert s["all"]["invalid_caught"] == "1/2" and s["all"]["valid_kept"] == "1/1"
+    assert s["high_confidence"]["invalid_caught"] == "1/1"
+
+    p1, p2 = tmp_path / "1.json", tmp_path / "2.json"
+    p1.write_text(_json.dumps({"summary": {"title": "m1"}, "results": run1}))
+    p2.write_text(_json.dumps({"summary": {"title": "m2"}, "results": run2}))
+    both = {r["id"]: r["accepted"] for r in combine([str(p1), str(p2)])}
+    assert both == {"a": False, "b": True, "c": False}
+
+
+def test_verify_passes_think_flag_only_when_configured():
+    reply = _chat_reply([{"id": 1, "answer": "A", "evidence": "There is the photograph, which she threatens"}])
+    with patch("src.quiz_generator.ollama_client.chat", return_value=reply) as chat, \
+            patch("src.quiz_generator.VERIFY_THINK", None):
+        _verify_questions([_photo_q()], CTX)
+    assert "think" not in chat.call_args.kwargs
+    with patch("src.quiz_generator.ollama_client.chat", return_value=reply) as chat, \
+            patch("src.quiz_generator.VERIFY_THINK", False):
+        _verify_questions([_photo_q()], CTX)
+    assert chat.call_args.kwargs["think"] is False
+
+
+# ─── Varsayılan doğrulayıcı ve health ───────────────────────────────────────
+
+
+def test_default_verifier_is_gemma_without_thinking(monkeypatch):
+    import importlib
+    monkeypatch.delenv("QUIZ_VERIFY_MODEL", raising=False)
+    monkeypatch.delenv("QUIZ_VERIFY_THINK", raising=False)
+    fresh = importlib.reload(config)
+    try:
+        assert fresh.VERIFY_MODEL == "gemma4:31b"
+        assert fresh.VERIFY_THINK is False
+        monkeypatch.setenv("QUIZ_VERIFY_THINK", "auto")
+        assert importlib.reload(config).VERIFY_THINK is None
+    finally:
+        monkeypatch.delenv("QUIZ_VERIFY_THINK", raising=False)
+        importlib.reload(config)
+
+
+def test_health_reports_missing_verifier_model():
+    with patch("api.routes.health._installed_models", return_value={"qwen2.5:14b", "bge-m3"}), \
+            patch.object(config, "VERIFY_ANSWERS", True), patch.object(config, "VERIFY_MODEL", "gemma4:31b"), \
+            patch("api.routes.health.get_cache_status", return_value={"exists": True, "num_books": 1}):
+        body = client.get("/api/v1/health").json()
+    assert body["verify_model"] == "gemma4:31b"
+    assert body["verify_model_installed"] is False
+    assert body["status"] == "degraded"
+
+
+def test_health_ok_when_verifier_installed():
+    with patch("api.routes.health._installed_models", return_value={"qwen2.5:14b", "gemma4:31b"}), \
+            patch.object(config, "VERIFY_ANSWERS", True), patch.object(config, "VERIFY_MODEL", "gemma4:31b"), \
+            patch("api.routes.health.get_cache_status", return_value={"exists": True, "num_books": 1}):
+        body = client.get("/api/v1/health").json()
+    assert body["verify_model_installed"] is True and body["status"] == "ok"

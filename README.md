@@ -14,6 +14,19 @@ source venv/bin/activate
 # Admin uçları (/books/import, /quiz/populate) için anahtar (tanımlı değilse bu uçlar kapalıdır)
 export ADMIN_API_KEY="uzun-rastgele-bir-deger"
 
+# Grounding doğrulaması (varsayılan açık): her soru ikinci bir LLM çağrısıyla metne karşı
+# kontrol edilir; doğrulayıcı aynı şıkkı seçip metinden birebir kanıt alıntılamazsa soru atılır.
+# Varsayılan doğrulayıcı gemma4:31b (thinking kapalı) — önce indirin (~20 GB):
+ollama pull gemma4:31b
+# Üretici (qwen2.5:14b, 9 GB) ve doğrulayıcı birlikte ~29 GB RAM kullanır.
+# export QUIZ_VERIFY_ANSWERS=0              # doğrulamayı kapatır (daha hızlı, hatalı sorular geçebilir)
+# export QUIZ_VERIFY_MODEL=qwen2.5:14b      # gemma yoksa / RAM yetmezse üreticiyle doğrula (daha zayıf)
+# export QUIZ_VERIFY_THINK=1                # thinking'i açar (~10 kat yavaş)
+# Doğrulayıcı modelin kurulu olup olmadığı GET /api/v1/health → verify_model_installed alanında görünür.
+#
+# Doğrulayıcıyı etiketli sette ölçmek için (evals/verifier_eval.json, 47 soru):
+# QUIZ_VERIFY_MODEL=gemma4:31b QUIZ_VERIFY_THINK=0 python scripts/eval_verifier.py --out sonuc.json
+
 # FastAPI sunucusunu başlatın (Port 8000)
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
@@ -46,7 +59,7 @@ Mobil emülatör veya gerçek cihazdan yerel makinenize bağlanırken:
 ```http
 GET /api/v1/health
 ```
-Ollama bağlantısını, aktif LLM (`qwen2.5:14b`) ve embedding (`bge-m3`) modellerini ve kayıtlı kitap sayısını döner.
+Ollama bağlantısını, aktif LLM (`qwen2.5:14b`) ve embedding (`bge-m3`) modellerini, kayıtlı kitap sayısını ve doğrulayıcı modelin (`verify_model`, varsayılan `gemma4:31b`) kurulu olup olmadığını (`verify_model_installed`) döner. Doğrulayıcı kurulu değilse `status` `degraded` olur.
 
 ---
 

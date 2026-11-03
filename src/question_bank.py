@@ -121,6 +121,7 @@ def _create_schema(db_path: Optional[str] = None):
             "model": "TEXT",
             "prompt_version": "TEXT",
             "source_chunk_indices": "TEXT",
+            "evidence": "TEXT",
         })
         conn.commit()
     logger.info(f"Soru bankası veritabanı hazır: {db_path or QUIZ_ENGINE_DB_PATH}")
@@ -316,8 +317,8 @@ def save_questions_to_pool(
                 """
                 INSERT INTO question_bank
                     (book_id, chapter_index, question, options, correct_answer, explanation, difficulty,
-                     source_pages, model, prompt_version, source_chunk_indices)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source_pages, model, prompt_version, source_chunk_indices, evidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     book_id,
@@ -331,6 +332,7 @@ def save_questions_to_pool(
                     q.get("model"),
                     q.get("prompt_version"),
                     json.dumps(q.get("source_chunk_indices", [])),
+                    q.get("evidence"),
                 ),
             )
             saved_count += 1

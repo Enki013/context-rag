@@ -18,6 +18,11 @@ class HealthResponse(BaseModel):
     embedding_model: str = Field(..., example="bge-m3")
     catalog_installed: bool = Field(..., example=True)
     total_books: int = Field(..., example=79576)
+    verify_answers: bool = Field(True, description="Grounding doğrulaması açık mı")
+    verify_model: Optional[str] = Field(None, example="gemma4:31b")
+    verify_model_installed: Optional[bool] = Field(
+        None, description="Doğrulayıcı model Ollama'da kurulu mu (Ollama'ya ulaşılamazsa null)"
+    )
 
 
 # ─── Books & Search ─────────────────────────────────────────────────────────

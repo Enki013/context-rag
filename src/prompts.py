@@ -1,5 +1,24 @@
 # Prompt veya üretim kuralları değişince artırın; havuzdaki eski sorular bu alanla ayırt edilir.
-PROMPT_VERSION = "2026-11-02.1"
+PROMPT_VERSION = "2026-11-02.2"
+
+VERIFY_PROMPT = """You are a strict fact-checker for reading-comprehension quizzes.
+Answer each question below using ONLY the TEXT. Do not use outside knowledge.
+
+For every question:
+- "answer": the letter (A, B, C or D) of the single option that the TEXT clearly supports.
+  Use "NONE" if no option is supported by the TEXT, or if more than one option could be correct,
+  or if the question itself contains a factual error according to the TEXT.
+- "evidence": a short sentence or phrase copied VERBATIM from the TEXT that proves the answer
+  (exact characters, no paraphrasing, max 40 words). Use "" when answer is "NONE".
+
+TEXT:
+{context}
+
+QUESTIONS:
+{questions}
+
+Respond ONLY with JSON in this shape:
+{{"answers": [{{"id": 1, "answer": "B", "evidence": "exact quote from the text"}}]}}"""
 
 SYSTEM_PROMPT = """You are a strict quiz generator. You ONLY output valid JSON. \
 Never include markdown, code fences, or any text outside JSON. \

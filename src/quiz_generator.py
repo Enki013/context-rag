@@ -8,8 +8,8 @@ import ollama as ollama_client
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import LLM_MODEL
-from src.prompts import PROMPT_VERSION, build_quiz_prompt, build_system_prompt, detect_language
+from config import LLM_MODEL, VERIFY_ANSWERS, VERIFY_MODEL, VERIFY_THINK
+from src.prompts import PROMPT_VERSION, VERIFY_PROMPT, build_quiz_prompt, build_system_prompt, detect_language
 
 logger = logging.getLogger(__name__)
 
@@ -374,7 +374,8 @@ def _call_llm(
                 logger.info(
                     f"  {len(valid)}/{len(questions)} soru kalite kontrolünden geçti"
                 )
-                return valid[:count]
+                # Fazlası da dönülür; doğrulama bazılarını eleyebilir, kesme generate_quiz'de yapılır
+                return valid
 
             logger.warning(
                 f"Deneme {attempt + 1}: {len(questions)} soru üretildi "
@@ -385,6 +386,141 @@ def _call_llm(
             logger.error(f"Deneme {attempt + 1} hatası: {e}")
 
     return []
+
+
+_QUOTE_CHARS = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"', "—": "-", "–": "-"})
+MIN_EVIDENCE_CHARS = 15
+MAX_GROUP_ATTEMPTS = 2
+
+
+def _normalize_for_match(text: str) -> str:
+    text = text.translate(_QUOTE_CHARS).lower()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _evidence_in_context(evidence: str, context: str) -> bool:
+    """Doğrulayıcının alıntısı metinde gerçekten geçiyor mu? ('...' ile bölünmüş alıntıları da kabul eder.)"""
+    norm_ctx = _normalize_for_match(context)
+    parts = [
+        p.strip(" .,;:!?\"'")
+        for p in re.split(r"\.{3}|…", _normalize_for_match(evidence))
+    ]
+    parts = [p for p in parts if p]
+    if not parts or sum(len(p) for p in parts) < MIN_EVIDENCE_CHARS:
+        return False
+    return all(p in norm_ctx for p in parts)
+
+
+def _parse_json_object(text: str) -> dict | None:
+    cleaned = text.strip()
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", cleaned)
+    if fence:
+        cleaned = fence.group(1).strip()
+    try:
+        parsed = json.loads(cleaned)
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        start, end = cleaned.find("{"), cleaned.rfind("}")
+        if start != -1 and end > start:
+            try:
+                parsed = json.loads(cleaned[start:end + 1])
+                return parsed if isinstance(parsed, dict) else None
+            except json.JSONDecodeError:
+                return None
+    return None
+
+
+def _verify_questions(questions: list[dict], context: str) -> list[dict]:
+    """
+    Grounding kontrolü: ikinci bir LLM çağrısı soruları yalnızca metne bakarak bağımsız cevaplar.
+    Bir soru, doğrulayıcı aynı şıkkı seçer VE metinde birebir geçen bir kanıt alıntısı verirse kalır.
+    Doğrulama yapılamazsa (LLM hatası/parse hatası) sorular güvenli tarafta kalmak için atılır.
+    """
+    if not questions:
+        return []
+
+    listing = "\n\n".join(
+        f"{i}. {q['question']}\n" + "\n".join(q["options"])
+        for i, q in enumerate(questions, 1)
+    )
+    prompt = VERIFY_PROMPT.format(context=context, questions=listing)
+
+    chat_kwargs = {}
+    if VERIFY_THINK is not None:
+        chat_kwargs["think"] = VERIFY_THINK
+
+    parsed = None
+    for attempt in range(2):
+        try:
+            response = ollama_client.chat(
+                model=VERIFY_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                format="json",
+                options={"temperature": 0.0},
+                **chat_kwargs,
+            )
+            parsed = _parse_json_object(response["message"]["content"])
+            if parsed and isinstance(parsed.get("answers"), list):
+                break
+            logger.warning(f"Doğrulama denemesi {attempt + 1}: JSON okunamadı")
+        except Exception as e:
+            logger.error(f"Doğrulama denemesi {attempt + 1} hatası: {e}")
+        parsed = None
+
+    if not parsed:
+        logger.warning(f"Doğrulama yapılamadı, {len(questions)} soru atlandı")
+        return []
+
+    by_id = {}
+    for item in parsed["answers"]:
+        if isinstance(item, dict):
+            try:
+                by_id[int(item.get("id"))] = item
+            except (TypeError, ValueError):
+                continue
+
+    verified = []
+    for i, q in enumerate(questions, 1):
+        item = by_id.get(i, {})
+        answer = str(item.get("answer", "")).strip().upper()[:4]
+        evidence = str(item.get("evidence", "") or "")
+
+        if answer != q["correct_answer"]:
+            logger.warning(
+                f"Doğrulama reddetti (beklenen {q['correct_answer']}, doğrulayıcı {answer or '-'}): "
+                f"'{q['question'][:70]}'"
+            )
+            continue
+        if not _evidence_in_context(evidence, context):
+            logger.warning(f"Kanıt metinde bulunamadı, soru atlandı: '{q['question'][:70]}'")
+            continue
+
+        q["evidence"] = evidence.strip()
+        verified.append(q)
+
+    logger.info(f"  {len(verified)}/{len(questions)} soru doğrulamadan geçti")
+    return verified
+
+
+def _generate_verified_for_group(context: str, count: int, language: str, difficulty: str) -> list[dict]:
+    """Bir chunk grubu için soru üretir, şıkları karıştırır ve doğrular; eksik kalırsa bir kez daha dener."""
+    accepted: list[dict] = []
+    seen = set()
+    for attempt in range(MAX_GROUP_ATTEMPTS if VERIFY_ANSWERS else 1):
+        need = count - len(accepted)
+        if need <= 0:
+            break
+        candidates = []
+        for q in _call_llm(context, need, language, difficulty=difficulty):
+            key = _normalize_for_match(q["question"])
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append(_shuffle_options(q))
+        if VERIFY_ANSWERS:
+            candidates = _verify_questions(candidates, context)
+        accepted.extend(candidates[:need])
+    return accepted
 
 
 def generate_quiz(
@@ -444,12 +580,11 @@ def generate_quiz(
             f"sayfalar: {source_pages}"
         )
 
-        questions = _call_llm(context, count, detected_lang, difficulty=difficulty)
+        questions = _generate_verified_for_group(context, count, detected_lang, difficulty)
         source_chapter = next((c.get("source_chapter") for c in included if isinstance(c, dict) and c.get("source_chapter")), None)
         progress_percent = next((c.get("progress_percent") for c in included if isinstance(c, dict) and c.get("progress_percent") is not None), None)
 
         for q in questions:
-            _shuffle_options(q)
             q["source_pages"] = source_pages
             q["source_chunk_indices"] = chunk_indices
             q["model"] = LLM_MODEL
