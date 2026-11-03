@@ -1,76 +1,145 @@
-# 📚 Context RAG - Mobile & Web Quiz API
+# Context RAG - Mobile & Web Quiz API
 
-Yapay zeka ve RAG (Retrieval-Augmented Generation) mimarisiyle güçlendirilmiş, **Project Gutenberg (79,000+ kitap)** ve **kullanıcı PDF belgeleri** üzerinden çoktan seçmeli quiz üreten ve değerlendiren backend servisi.
+A backend service that generates and grades multiple-choice quizzes from **Project Gutenberg (79,000+ books)** and **user-uploaded PDF/EPUB documents**, using local LLMs served by Ollama.
 
 ---
 
-## 🚀 Hızlı Başlangıç
+## How It Works
 
-### 1. API Sunucusunu Başlatma
+### Quiz generation pipeline
+
+Every quiz endpoint goes through the same pipeline: the source text is split into chunks, a representative sample is grouped into LLM-sized contexts, and each generated question is validated, shuffled and independently verified against the text before it is returned.
+
+```mermaid
+flowchart TD
+    A["Source<br/>Gutenberg book, PDF or EPUB"] --> B["Extract and clean text<br/>strip Gutenberg license header/footer"]
+    B --> C["Detect chapters<br/>regex headings or EPUB TOC<br/>fallback: 4 equal parts"]
+    C --> D["Chunk text<br/>1000 chars, 200 overlap<br/>keep real start offset per chunk"]
+    D --> E["Select chunks<br/>stratified sample over the whole text<br/>drop publisher boilerplate"]
+    E --> F["Group chunks<br/>5 chunks per group"]
+    F --> G["Build context<br/>max 4000 chars, overlap removed"]
+    G --> H["Generator LLM<br/>qwen2.5:14b returns JSON questions"]
+    H --> I{"Structural checks<br/>4 options, valid key,<br/>no duplicates, no language mixing"}
+    I -- fail --> X1["Discard question"]
+    I -- pass --> J["Shuffle options<br/>recompute correct letter"]
+    J --> K{"Verifier LLM<br/>gemma4:31b, thinking off<br/>same answer and verbatim evidence?"}
+    K -- no --> X2["Discard question"]
+    K -- yes --> L["Attach provenance<br/>pages, chunk indices, evidence,<br/>model, prompt version"]
+    X2 -. "group short of questions:<br/>regenerate once" .-> H
+    L --> M["Quiz response or question bank"]
+```
+
+Key points:
+
+- **Coverage:** chunks are sampled from evenly spaced slices of the text, so the beginning, middle and end of a book are always represented.
+- **Answer-position bias:** the LLM tends to put the correct answer in A or B, so options are shuffled after generation.
+- **Grounding:** a second model answers each question using only the text and must quote verbatim evidence. If it picks a different option, cannot quote the text, or the verification call fails, the question is dropped (fail closed).
+
+### Mobile question bank flow
+
+Mobile clients do not generate quizzes on demand. They read from a persistent per-chapter question pool, and answers are graded on the server so the client never sees the correct option.
+
+```mermaid
+sequenceDiagram
+    participant App as Mobile app
+    participant API as FastAPI
+    participant DB as SQLite question bank
+    participant LLM as Ollama
+
+    App->>API: GET /books/{id}/chapters
+    API-->>App: chapter list with progress %
+
+    App->>API: GET /quiz/serve (book_id, chapter_index, count)
+    API->>DB: count questions in pool
+    alt pool has enough questions (cache hit)
+        DB-->>API: random sample
+    else pool too small (cache miss)
+        API->>API: per-chapter lock
+        API->>DB: load chapter text (or local file / Gutenberg download)
+        API->>LLM: generate + verify missing questions
+        LLM-->>API: verified questions
+        API->>DB: save to pool with evidence and model version
+        DB-->>API: random sample
+    end
+    API-->>App: questions with ids, answers hidden
+
+    App->>API: POST /quiz/evaluate-answers (question_id, selected_option)
+    API->>DB: look up correct answers by id
+    API-->>App: score, per-question result and explanation
+```
+
+---
+
+## Quick Start
+
+### 1. Start the API server
 ```bash
-# Sanal ortamı etkinleştirin
+# Activate the virtual environment
 source venv/bin/activate
 
-# Admin uçları (/books/import, /quiz/populate) için anahtar (tanımlı değilse bu uçlar kapalıdır)
-export ADMIN_API_KEY="uzun-rastgele-bir-deger"
+# Key for admin endpoints (/books/import, /quiz/populate). If unset, these endpoints are disabled.
+export ADMIN_API_KEY="a-long-random-value"
 
-# Grounding doğrulaması (varsayılan açık): her soru ikinci bir LLM çağrısıyla metne karşı
-# kontrol edilir; doğrulayıcı aynı şıkkı seçip metinden birebir kanıt alıntılamazsa soru atılır.
-# Varsayılan doğrulayıcı gemma4:31b (thinking kapalı) — önce indirin (~20 GB):
+# Grounding verification (on by default): each question is checked against the text by a
+# second LLM call; if the verifier picks a different option or cannot quote verbatim
+# evidence from the text, the question is dropped.
+# The default verifier is gemma4:31b with thinking off. Download it first (~20 GB):
 ollama pull gemma4:31b
-# Üretici (qwen2.5:14b, 9 GB) ve doğrulayıcı birlikte ~29 GB RAM kullanır.
-# export QUIZ_VERIFY_ANSWERS=0              # doğrulamayı kapatır (daha hızlı, hatalı sorular geçebilir)
-# export QUIZ_VERIFY_MODEL=qwen2.5:14b      # gemma yoksa / RAM yetmezse üreticiyle doğrula (daha zayıf)
-# export QUIZ_VERIFY_THINK=1                # thinking'i açar (~10 kat yavaş)
-# Doğrulayıcı modelin kurulu olup olmadığı GET /api/v1/health → verify_model_installed alanında görünür.
+# The generator (qwen2.5:14b, 9 GB) and the verifier together use about 29 GB of RAM.
+# export QUIZ_VERIFY_ANSWERS=0              # disable verification (faster, bad questions may get through)
+# export QUIZ_VERIFY_MODEL=qwen2.5:14b      # verify with the generator if gemma is missing or RAM is short (weaker)
+# export QUIZ_VERIFY_THINK=1                # enable thinking (about 10x slower)
+# Whether the verifier model is installed is shown in GET /api/v1/health -> verify_model_installed.
 #
-# Doğrulayıcıyı etiketli sette ölçmek için (evals/verifier_eval.json, 47 soru):
-# QUIZ_VERIFY_MODEL=gemma4:31b QUIZ_VERIFY_THINK=0 python scripts/eval_verifier.py --out sonuc.json
+# To measure the verifier on the labeled set (evals/verifier_eval.json, 47 questions):
+# QUIZ_VERIFY_MODEL=gemma4:31b QUIZ_VERIFY_THINK=0 python scripts/eval_verifier.py --out result.json
 
-# FastAPI sunucusunu başlatın (Port 8000)
+# Start the FastAPI server (port 8000)
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-- **Swagger UI (İnteraktif Test Arayüzü):** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc Dokümantasyonu:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
-- **Postman Koleksiyonu:** Proje kök dizinindeki `Context_RAG_Quiz_API.postman_collection.json` dosyasını Postman'e aktarabilirsiniz.
+- **Swagger UI (interactive testing):** [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc documentation:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
+- **Postman collection:** import `Context_RAG_Quiz_API.postman_collection.json` from the project root into Postman.
 
-### 2. Streamlit Web Panelini Başlatma (İsteğe bağlı)
+### 2. Start the Streamlit web panel (optional)
 ```bash
 streamlit run ui/app.py --server.port 8501
 ```
-Web Arayüzü: [http://localhost:8501](http://localhost:8501)
+Web UI: [http://localhost:8501](http://localhost:8501)
 
 ---
 
-## 📱 Mobil Uygulama Geliştiricileri İçin Notlar
+## Notes for Mobile Developers
 
-Mobil emülatör veya gerçek cihazdan yerel makinenize bağlanırken:
-- **Android Emülatör:** `http://10.0.2.2:8000`
-- **iOS Simülatör:** `http://localhost:8000` veya `http://127.0.0.1:8000`
-- **Gerçek Cihaz (Wi-Fi):** Bilgisayarınızın yerel IP adresi (örn. `http://192.168.1.XX:8000`)
-- **CORS:** Tüm `origin`, `method` ve `header`'lar için varsayılan olarak açıktır.
+When connecting to your local machine from an emulator or a physical device:
+- **Android emulator:** `http://10.0.2.2:8000`
+- **iOS simulator:** `http://localhost:8000` or `http://127.0.0.1:8000`
+- **Physical device (Wi-Fi):** your computer's local IP address (e.g. `http://192.168.1.XX:8000`)
+- **CORS:** open to all origins, methods and headers by default.
 
 ---
 
-## 📡 API Endpoint Referansı
+## API Endpoint Reference
 
-### 1. Sistem Durumu
+Difficulty values on the `/quiz/*` endpoints are Turkish: `kolay` (easy), `orta` (medium), `zor` (hard). The RESTful `/quizzes` endpoint uses `easy`, `medium`, `hard`.
+
+### 1. System Status
 ```http
 GET /api/v1/health
 ```
-Ollama bağlantısını, aktif LLM (`qwen2.5:14b`) ve embedding (`bge-m3`) modellerini, kayıtlı kitap sayısını ve doğrulayıcı modelin (`verify_model`, varsayılan `gemma4:31b`) kurulu olup olmadığını (`verify_model_installed`) döner. Doğrulayıcı kurulu değilse `status` `degraded` olur.
+Returns the Ollama connection status, the active LLM (`qwen2.5:14b`) and embedding (`bge-m3`) models, the number of books in the catalog, and whether the verifier model (`verify_model`, default `gemma4:31b`) is installed (`verify_model_installed`). If the verifier is missing, `status` is `degraded`.
 
 ---
 
-### 2. Kitap Kataloğu & Arama
+### 2. Book Catalog & Search
 
-#### 🔍 Kitap Ara
+#### Search books
 ```http
 GET /api/v1/books/search?q={query}&limit={limit}
 ```
-*Örnek:* `GET /api/v1/books/search?q=Sherlock Holmes&limit=10`
-*Yanıt:*
+*Example:* `GET /api/v1/books/search?q=Sherlock Holmes&limit=10`
+*Response:*
 ```json
 {
   "query": "Sherlock Holmes",
@@ -89,22 +158,43 @@ GET /api/v1/books/search?q={query}&limit={limit}
 }
 ```
 
-#### 📖 Kitap Detayı
+#### Book details
 ```http
 GET /api/v1/books/{book_id}
 ```
-*Örnek:* `GET /api/v1/books/1661`
+*Example:* `GET /api/v1/books/1661`
+
+#### Book chapters
+```http
+GET /api/v1/books/{book_id}/chapters
+```
+Returns every chapter with its title, size and position in the book (`progress_percent`). Chapters from the question bank are used if the book has been imported; otherwise they are detected from the Gutenberg text.
 
 ---
 
-### 3. Quiz Üretimi
+### 3. Quiz Generation
 
-#### 📚 Kitaptan Quiz Üret
+#### Create a quiz (RESTful)
+```http
+POST /api/v1/quizzes
+Content-Type: application/json
+```
+*Body:*
+```json
+{
+  "source": { "type": "book", "book_id": "1661", "chapter_index": 1 },
+  "question_count": 5,
+  "difficulty": "medium"
+}
+```
+Title and author are resolved from the catalog. `chapter_index` is optional; without it, questions are drawn from the whole book. Returns `201 Created` with the quiz and an `id`.
+
+#### Generate a quiz from a book
 ```http
 POST /api/v1/quiz/generate-from-book
 Content-Type: application/json
 ```
-*Gövde:*
+*Body:*
 ```json
 {
   "book_id": "1661",
@@ -115,7 +205,7 @@ Content-Type: application/json
   "question_type": "multiple_choice"
 }
 ```
-*Yanıt:*
+*Response:*
 ```json
 {
   "source_type": "book",
@@ -125,7 +215,7 @@ Content-Type: application/json
   "total_questions": 5,
   "questions": [
     {
-      "question": "Sherlock Holmes hangi sokakta yaşamaktadır?",
+      "question": "On which street do Holmes and Watson live?",
       "options": [
         "A) Baker Street 221B",
         "B) Oxford Street 12",
@@ -133,62 +223,62 @@ Content-Type: application/json
         "D) Abbey Road 10"
       ],
       "correct_answer": "A",
-      "explanation": "Holmes ve Watson, Baker Street 221B adresinde ikamet etmektedir.",
+      "explanation": "Holmes and Watson live at 221B Baker Street.",
       "source_pages": []
     }
   ]
 }
 ```
 
-#### 📄 PDF'ten Quiz Üret
+#### Generate a quiz from a PDF
 ```http
 POST /api/v1/quiz/generate-from-pdf
 Content-Type: multipart/form-data
 ```
-*Form Alanları:*
-- `file`: PDF dosyası (Binary, maks. 50 MB)
-- `num_questions`: int (varsayılan 5, 1-10 arası)
-- `difficulty`: string ("kolay" | "orta" | "zor")
-- `question_type`: string ("multiple_choice")
+*Form fields:*
+- `file`: PDF file (binary, max 50 MB)
+- `num_questions`: int (default 5, between 1 and 10)
+- `difficulty`: string (`kolay` | `orta` | `zor`)
+- `question_type`: string (`multiple_choice`)
 
-#### 📱 EPUB'tan Quiz Üret
+#### Generate a quiz from an EPUB
 ```http
 POST /api/v1/quiz/generate-from-epub
 Content-Type: multipart/form-data
 ```
-*Form Alanları:*
-- `file`: EPUB dosyası (Binary, maks. 50 MB)
-- `num_questions`: int (varsayılan 5, 1-10 arası)
-- `difficulty`: string ("kolay" | "orta" | "zor")
-- `question_type`: string ("multiple_choice")
+*Form fields:*
+- `file`: EPUB file (binary, max 50 MB)
+- `num_questions`: int (default 5, between 1 and 10)
+- `difficulty`: string (`kolay` | `orta` | `zor`)
+- `question_type`: string (`multiple_choice`)
 
 ---
 
-### 4. Headless Soru Bankası & Mobil Quiz Servisi (0ms Cache & Anti-Cheat)
+### 4. Headless Question Bank & Mobile Quiz Service (Cache & Anti-Cheat)
 
-Mobil uygulamalar için kullanıcı verisinden bağımsız, kalıcı soru havuzlu (<1ms Cache Hit) ve hile korumalı quiz motoru.
+A quiz engine for mobile apps with a persistent question pool per chapter (sub-millisecond cache hits) and server-side grading. It stores no user data.
 
-> Detaylı mobil entegrasyon kılavuzu için [docs/question_bank_api.md](docs/question_bank_api.md) belgesini inceleyin.
+> For the detailed mobile integration guide, see [docs/question_bank_api.md](docs/question_bank_api.md).
 
-#### 📥 Kitap & Bölüm İçe Aktar
+#### Import a book and its chapters
 ```http
 POST /api/v1/books/import
 Content-Type: multipart/form-data
 X-Admin-Key: {ADMIN_API_KEY}
 ```
-EPUB veya PDF dosyasını okur, gömülü içindekiler (TOC) ve sayfalarla otomatik bölümler ve sisteme kaydeder. **Admin uç:** `X-Admin-Key` gerekir.
-Aynı kitap yeniden içe aktarıldığında metni değişen bölümlerin soru havuzu silinir, artık olmayan bölümler kaldırılır (yanlış bölüme düşen soru/spoiler olmasın diye).
+Reads an EPUB or PDF, splits it into chapters using the embedded table of contents (TOC) and pages, and stores it. **Admin endpoint:** requires `X-Admin-Key`.
+When the same book is imported again, the question pool of every chapter whose text changed is deleted, and chapters that no longer exist are removed, so questions never end up attached to the wrong chapter (which would spoil later chapters).
 
-#### 🎯 Bölüm Quizi Getir (Cache Hit / On-Demand)
+#### Get a chapter quiz (cache hit / on demand)
 ```http
 GET /api/v1/quiz/serve?book_id={book_id}&chapter_index={chapter_index}&count=5&difficulty=orta&hide_answers=true
 ```
-- Havuzda soru varsa: **0 milisaniyede** havuzdan rastgele soru döner (`cache_hit: true`).
-- Havuz boşsa: LLM ile ilgili bölüm metninden sorular üretip havuza kaydeder (`cache_hit: false`).
-- `hide_answers=true`: Doğru şıklar ve açıklamalar istemciye sızdırılmaz (`correct_answer: null`).
-- `hide_answers=false` yalnızca geçerli `X-Admin-Key` header'ı ile kabul edilir; aksi halde `403`.
+- If the pool has enough questions: returns a random sample from the pool immediately (`cache_hit: true`).
+- If the pool is too small: generates questions from the chapter text with the LLM and saves them to the pool (`cache_hit: false`).
+- `hide_answers=true`: correct options and explanations are not sent to the client (`correct_answer: null`).
+- `hide_answers=false` is only accepted with a valid `X-Admin-Key` header; otherwise the response is `403`.
 
-#### 🛡️ Hile Korumalı Cevap Değerlendirme (Soru ID Bazlı)
+#### Grade answers by question ID (anti-cheat)
 ```http
 POST /api/v1/quiz/evaluate-answers
 Content-Type: application/json
@@ -203,32 +293,31 @@ Content-Type: application/json
   ]
 }
 ```
-Mobil istemci doğru şıkkı bilmeden yalnızca soru ID'si ve seçtiği şıkkı gönderir; sunucu veritabanında doğrular ve puanlama yapar.
+The mobile client sends only the question ID and the selected option, without knowing the correct answer; the server checks the answers in the database and computes the score.
 
-#### ⚡ Soru Havuzunu Önceden Doldur (Pre-populate Pool)
+#### Pre-populate a question pool
 ```http
 POST /api/v1/quiz/populate?book_id={book_id}&chapter_index={chapter_index}&target_count=15&difficulty=orta
 X-Admin-Key: {ADMIN_API_KEY}
 ```
-Arka planda (Admin / Cron) bir bölümün soru havuzunu `target_count` soruya kadar doldurur; havuz kısmen doluysa yalnızca eksik kadar üretir. **Admin uç:** `X-Admin-Key` gerekir.
+Fills a chapter's question pool in the background (admin / cron) up to `target_count` questions; if the pool is partially filled, only the missing questions are generated. **Admin endpoint:** requires `X-Admin-Key`.
 
 ---
 
-### 5. Geriye Dönük Uyumluluk: Quiz Cevaplarını Değerlendir
+### 5. Backward Compatibility: Grade Quiz Answers
 
 ```http
 POST /api/v1/quiz/evaluate
 Content-Type: application/json
 ```
-Kullanıcının gönderdiği test şıklarını orijinal quiz listesiyle karşılaştırarak puanlar.
+Scores the options submitted by the user against the original quiz list sent in the same request.
 
 ---
 
-## 📬 Postman İle Test Etme
+## Testing with Postman
 
-1. Postman uygulamasını açın.
-2. Sol üstteki **Import** butonuna tıklayın.
-3. Proje dizinindeki `Context_RAG_Quiz_API.postman_collection.json` dosyasını seçin.
-4. Koleksiyon değişkeni `baseUrl` varsayılan olarak `http://localhost:8000` ayarlıdır.
-5. Koleksiyon içerisindeki 6 ana kategori altındaki tüm istekleri (Arama, EPUB/PDF Import, Bölüm Quizi, Hile Korumalı Değerlendirme vb.) hemen test edebilirsiniz!
-
+1. Open Postman.
+2. Click **Import** in the top left.
+3. Select `Context_RAG_Quiz_API.postman_collection.json` from the project directory.
+4. The collection variable `baseUrl` defaults to `http://localhost:8000`.
+5. You can now try every request in the collection's 6 categories (search, EPUB/PDF import, chapter quiz, anti-cheat grading, etc.).
