@@ -455,7 +455,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"book_id\": \"1661\",\n  \"num_questions\": 5,\n  \"difficulty\": \"orta\",\n  \"chapter_index\": 1\n}"
+              "raw": "{\n  \"book_id\": \"1661\",\n  \"num_questions\": 5,\n  \"difficulty\": \"medium\",\n  \"chapter_index\": 1\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/quiz/generate-from-book",
@@ -499,9 +499,9 @@
                 },
                 {
                   "key": "difficulty",
-                  "value": "orta",
+                  "value": "medium",
                   "type": "text",
-                  "description": "kolay | orta | zor"
+                  "description": "easy | medium | hard"
                 },
                 {
                   "key": "question_type",
@@ -552,9 +552,9 @@
                 },
                 {
                   "key": "difficulty",
-                  "value": "orta",
+                  "value": "medium",
                   "type": "text",
-                  "description": "kolay | orta | zor"
+                  "description": "easy | medium | hard"
                 },
                 {
                   "key": "question_type",
@@ -634,7 +634,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/quiz/serve?book_id=1661&chapter_index=1&count=5&difficulty=orta&hide_answers=true",
+              "raw": "{{baseUrl}}/api/v1/quiz/serve?book_id=1661&chapter_index=1&count=5&difficulty=medium&hide_answers=true",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -662,8 +662,8 @@
                 },
                 {
                   "key": "difficulty",
-                  "value": "orta",
-                  "description": "kolay | orta | zor"
+                  "value": "medium",
+                  "description": "easy | medium | hard"
                 },
                 {
                   "key": "hide_answers",
@@ -721,7 +721,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/quiz/populate?book_id=1661&chapter_index=1&target_count=10&difficulty=orta",
+              "raw": "{{baseUrl}}/api/v1/quiz/populate?book_id=1661&chapter_index=1&target_count=10&difficulty=medium",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -749,8 +749,8 @@
                 },
                 {
                   "key": "difficulty",
-                  "value": "orta",
-                  "description": "kolay | orta | zor"
+                  "value": "medium",
+                  "description": "easy | medium | hard"
                 }
               ]
             },

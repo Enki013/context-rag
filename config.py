@@ -17,7 +17,7 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "data", "uploads")
 
 # Quiz defaults
 DEFAULT_QUIZ_COUNT = 5
-DEFAULT_DIFFICULTY = "orta"
+DEFAULT_DIFFICULTY = "medium"
 DEFAULT_QUESTION_TYPE = "multiple_choice"
 
 # Grounding doğrulaması: her soru ikinci bir LLM çağrısıyla metne karşı kontrol edilir.

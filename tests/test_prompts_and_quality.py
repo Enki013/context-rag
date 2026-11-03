@@ -24,7 +24,7 @@ class TestPromptGeneration:
             context="Sherlock Holmes was a detective.",
             count=5,
             language="Turkish",
-            difficulty="zor",
+            difficulty="hard",
         )
         assert "Sherlock Holmes was a detective." in prompt
         assert "5 multiple-choice" in prompt

@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.contextrag.quizapp.data.ChapterItem
+import com.contextrag.quizapp.data.Difficulty
 import com.contextrag.quizapp.ui.components.SectionHeader
 import com.contextrag.quizapp.ui.components.ShimmerCard
 import com.contextrag.quizapp.ui.components.expressiveBounceClick
@@ -155,11 +156,11 @@ fun BookDetailScreen(
                         ) {
                             // Zorluk
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                listOf("kolay", "orta", "zor").forEach { diff ->
+                                Difficulty.all.forEach { diff ->
                                     FilterChip(
                                         selected = state.quizDifficulty == diff,
                                         onClick = { onSetDifficulty(diff) },
-                                        label = { Text(diff.replaceFirstChar { it.uppercase() }) },
+                                        label = { Text(Difficulty.label(diff)) },
                                         shape = M3Shapes.CornerFull,
                                         modifier = Modifier.expressiveBounceClick(scaleDown = 0.94f) {
                                             onSetDifficulty(diff)

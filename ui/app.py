@@ -26,10 +26,12 @@ logger = logging.getLogger(__name__)
 # ─── Difficulty mapping ──────────────────────────────────────────────────────
 
 DIFFICULTY_OPTIONS = {
-    "🟢 Kolay": "kolay",
-    "🟡 Orta": "orta",
-    "🔴 Zor": "zor",
+    "🟢 Kolay": "easy",
+    "🟡 Orta": "medium",
+    "🔴 Zor": "hard",
 }
+# API değeri -> ekranda gösterilen etiket
+DIFFICULTY_LABELS = {v: k for k, v in DIFFICULTY_OPTIONS.items()}
 
 # ─── Session State ──────────────────────────────────────────────────────────
 
@@ -344,8 +346,7 @@ def render_sidebar() -> tuple[int, str]:
                 st.success(f"📖 **{meta['title']}**\n\n_{meta.get('author', '')}_ ")
                 if meta.get("chapter_label"):
                     st.caption(f"Bölüm {meta['chapter_index']}: {meta['chapter_label']}")
-                diff_emoji = {"kolay": "🟢", "orta": "🟡", "zor": "🔴"}.get(meta["difficulty"], "")
-                st.caption(f"Zorluk: {diff_emoji} {meta['difficulty'].capitalize()}")
+                st.caption(f"Zorluk: {DIFFICULTY_LABELS.get(meta['difficulty'], meta['difficulty'])}")
             elif meta["source_type"] == "epub":
                 author_str = f"\n\n_{meta['author']}_" if meta.get("author") else ""
                 st.success(f"📚 EPUB: **{meta['title']}**{author_str}")
@@ -438,8 +439,7 @@ def render_quiz():
         else:
             st.caption("📚 Tüm kitaptan")
     with info_cols[2]:
-        diff_emoji = {"kolay": "🟢", "orta": "🟡", "zor": "🔴"}.get(meta.get("difficulty", ""), "")
-        st.caption(f"{diff_emoji} {meta.get('difficulty', '').capitalize()}")
+        st.caption(DIFFICULTY_LABELS.get(meta.get("difficulty", ""), meta.get("difficulty", "")))
 
     st.caption("Her soru için bir şık seçin, ardından cevaplarınızı kontrol edin.")
     st.divider()

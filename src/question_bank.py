@@ -25,6 +25,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import QUIZ_ENGINE_DB_PATH
 from src.chunker import chunk_text
+from src.difficulty import normalize_difficulty
 from src.quiz_generator import generate_quiz
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ _pool_locks_guard = threading.Lock()
 
 
 def _pool_lock(db_path: Optional[str], book_id: str, chapter_index: int, difficulty: str) -> threading.Lock:
-    key = (os.path.abspath(db_path or QUIZ_ENGINE_DB_PATH), book_id, chapter_index, difficulty.lower())
+    key = (os.path.abspath(db_path or QUIZ_ENGINE_DB_PATH), book_id, chapter_index, normalize_difficulty(difficulty))
     with _pool_locks_guard:
         return _pool_locks.setdefault(key, threading.Lock())
 
@@ -108,7 +109,7 @@ def _create_schema(db_path: Optional[str] = None):
                 options TEXT NOT NULL,
                 correct_answer TEXT NOT NULL,
                 explanation TEXT NOT NULL,
-                difficulty TEXT DEFAULT 'orta',
+                difficulty TEXT DEFAULT 'medium',
                 source_pages TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -123,6 +124,15 @@ def _create_schema(db_path: Optional[str] = None):
             "source_chunk_indices": "TEXT",
             "evidence": "TEXT",
         })
+        # Zorluk değerleri İngilizceye taşındı (kolay/orta/zor -> easy/medium/hard)
+        cur.execute(
+            """
+            UPDATE question_bank SET difficulty = CASE lower(difficulty)
+                WHEN 'kolay' THEN 'easy' WHEN 'orta' THEN 'medium' WHEN 'zor' THEN 'hard'
+                ELSE difficulty END
+            WHERE lower(difficulty) IN ('kolay', 'orta', 'zor')
+            """
+        )
         conn.commit()
     logger.info(f"Soru bankası veritabanı hazır: {db_path or QUIZ_ENGINE_DB_PATH}")
 
@@ -286,7 +296,7 @@ def count_pool_questions(
         if difficulty:
             row = conn.execute(
                 "SELECT COUNT(*) as cnt FROM question_bank WHERE book_id = ? AND chapter_index = ? AND difficulty = ?",
-                (book_id, chapter_index, difficulty.lower()),
+                (book_id, chapter_index, normalize_difficulty(difficulty)),
             ).fetchone()
         else:
             row = conn.execute(
@@ -300,7 +310,7 @@ def save_questions_to_pool(
     book_id: str,
     chapter_index: int,
     questions: List[Dict[str, Any]],
-    difficulty: str = "orta",
+    difficulty: str = "medium",
     db_path: Optional[str] = None,
 ) -> int:
     """Üretilen soruları soru bankası tablosuna kaydeder."""
@@ -311,7 +321,7 @@ def save_questions_to_pool(
         for q in questions:
             opts_json = json.dumps(q.get("options", []), ensure_ascii=False)
             pages_json = json.dumps(q.get("source_pages", []), ensure_ascii=False)
-            diff = q.get("difficulty") or difficulty
+            diff = normalize_difficulty(q.get("difficulty") or difficulty)
 
             cur.execute(
                 """
@@ -327,7 +337,7 @@ def save_questions_to_pool(
                     opts_json,
                     q["correct_answer"],
                     q["explanation"],
-                    diff.lower(),
+                    diff,
                     pages_json,
                     q.get("model"),
                     q.get("prompt_version"),
@@ -356,7 +366,7 @@ def get_cached_questions(
         params = [book_id, chapter_index]
         if difficulty:
             query += " AND difficulty = ?"
-            params.append(difficulty.lower())
+            params.append(normalize_difficulty(difficulty))
 
         rows = conn.execute(query, params).fetchall()
         if not rows:
@@ -387,7 +397,7 @@ def serve_chapter_quiz(
     book_id: str,
     chapter_index: int,
     count: int = 5,
-    difficulty: str = "orta",
+    difficulty: str = "medium",
     min_pool_target: int = 10,
     hide_answers: bool = True,
     db_path: Optional[str] = None,
@@ -423,7 +433,7 @@ def populate_chapter_pool(
     book_id: str,
     chapter_index: int,
     target_count: int = 10,
-    difficulty: str = "orta",
+    difficulty: str = "medium",
     db_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Bölüm havuzunu target_count soruya kadar doldurur (havuz kısmen doluysa eksik kadar üretir)."""

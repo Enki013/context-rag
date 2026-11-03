@@ -7,6 +7,7 @@ import com.contextrag.quizapp.data.ApiClient
 import com.contextrag.quizapp.data.BookChaptersResponse
 import com.contextrag.quizapp.data.BookItem
 import com.contextrag.quizapp.data.ChapterItem
+import com.contextrag.quizapp.data.Difficulty
 import com.contextrag.quizapp.data.EvaluationResponse
 import com.contextrag.quizapp.data.HealthResponse
 import com.contextrag.quizapp.data.ServeQuizResponse
@@ -43,7 +44,7 @@ data class UiState(
     val chaptersError: String? = null,
 
     // Quiz Serving
-    val quizDifficulty: String = "orta",
+    val quizDifficulty: String = Difficulty.MEDIUM,
     val quizCount: Int = 5,
     val currentQuiz: ServeQuizResponse? = null,
     val isLoadingQuiz: Boolean = false,

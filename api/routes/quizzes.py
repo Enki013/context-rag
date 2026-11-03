@@ -28,13 +28,6 @@ from src.quiz_generator import generate_quiz
 router = APIRouter(prefix="/quizzes", tags=["Quizzes"])
 logger = logging.getLogger(__name__)
 
-# API'den gelen İngilizce difficulty değerlerini
-# quiz_generator / prompts katmanının beklediği Türkçe karşılıklara map eder.
-_DIFFICULTY_MAP: dict[str, str] = {
-    "easy": "kolay",
-    "medium": "orta",
-    "hard": "zor",
-}
 
 
 def _resolve_book_metadata(book_id: str) -> tuple[str, str]:
@@ -86,13 +79,11 @@ def create_quiz(req: CreateQuizRequest) -> QuizResourceResponse:
 
     Kitap kaynağından RESTful quiz kaynağı oluşturur.
     - title / author katalogdan otomatik çözülür.
-    - difficulty İngilizce API değerinden Türkçe prompt değerine dönüştürülür.
     - Yanıt 201 Created, body'de tam quiz objesi.
     """
     book_id = req.source.book_id
     chapter_index = req.source.chapter_index
-    api_difficulty = req.difficulty  # "easy" | "medium" | "hard"
-    internal_difficulty = _DIFFICULTY_MAP[api_difficulty]  # "kolay" | "orta" | "zor"
+    difficulty = req.difficulty.value  # "easy" | "medium" | "hard"
 
     # Kitap metadata'sını katalogdan çöz
     title, author = _resolve_book_metadata(book_id)
@@ -130,7 +121,7 @@ def create_quiz(req: CreateQuizRequest) -> QuizResourceResponse:
         raw_questions = generate_quiz(
             quiz_chunks,
             num_questions=req.question_count,
-            difficulty=internal_difficulty,
+            difficulty=difficulty,
         )
     except RuntimeError as exc:
         logger.error(f"Quiz üretimi başarısız (book_id={book_id}): {exc}", exc_info=True)
@@ -166,7 +157,7 @@ def create_quiz(req: CreateQuizRequest) -> QuizResourceResponse:
         title=title,
         author=author or None,
         question_count=len(questions),
-        difficulty=api_difficulty,
+        difficulty=difficulty,
         status="completed",
         questions=questions,
         created_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

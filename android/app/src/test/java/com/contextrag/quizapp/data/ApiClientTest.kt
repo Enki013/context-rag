@@ -147,7 +147,7 @@ class ApiClientTest {
                 "author": "Arthur Conan Doyle",
                 "chapter_index": 1,
                 "chapter_title": "I. A SCANDAL IN BOHEMIA",
-                "difficulty": "orta",
+                "difficulty": "medium",
                 "cache_hit": true,
                 "total_pool_size": 15,
                 "question_count": 2,
@@ -173,7 +173,7 @@ class ApiClientTest {
         """.trimIndent()
         mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(json))
 
-        val result = apiClient.serveQuiz("1661", chapterIndex = 1, count = 2, difficulty = "orta", hideAnswers = true)
+        val result = apiClient.serveQuiz("1661", chapterIndex = 1, count = 2, difficulty = "medium", hideAnswers = true)
         assertTrue(result.isSuccess)
         val quiz = result.getOrNull()
         assertNotNull(quiz)

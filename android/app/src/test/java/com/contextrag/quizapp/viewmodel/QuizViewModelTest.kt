@@ -87,7 +87,7 @@ class QuizViewModelTest {
             "author": "Arthur Conan Doyle",
             "chapter_index": 1,
             "chapter_title": "I. A SCANDAL IN BOHEMIA",
-            "difficulty": "orta",
+            "difficulty": "medium",
             "cache_hit": true,
             "total_pool_size": 15,
             "question_count": 2,
@@ -207,9 +207,9 @@ class QuizViewModelTest {
         assertEquals(2, state.selectedChapter?.chapterIndex)
 
         // 3. Ayarları değiştirme (Zorluk & Soru sayısı)
-        viewModel.setDifficulty("zor")
+        viewModel.setDifficulty("hard")
         viewModel.setQuizCount(10)
-        assertEquals("zor", viewModel.uiState.value.quizDifficulty)
+        assertEquals("hard", viewModel.uiState.value.quizDifficulty)
         assertEquals(10, viewModel.uiState.value.quizCount)
 
         // 4. Quizi Başlatma -> QuizScreen'e geçiş

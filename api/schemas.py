@@ -5,6 +5,8 @@ Mobile ve web API istek ve yanıtları için Pydantic şemaları.
 """
 
 from typing import List, Literal, Optional
+
+from src.difficulty import Difficulty, DifficultyParam
 from pydantic import BaseModel, Field
 
 
@@ -104,7 +106,7 @@ class BookQuizRequest(BaseModel):
     title: Optional[str] = Field(default=None, example="The Adventures of Sherlock Holmes", description="İsteğe bağlı: Boş bırakılırsa katalogdan otomatik doldurulur")
     author: Optional[str] = Field(default=None, example="Arthur Conan Doyle", description="İsteğe bağlı: Boş bırakılırsa katalogdan otomatik doldurulur")
     num_questions: int = Field(default=5, ge=1, le=10, description="Üretilecek soru sayısı (1-10)")
-    difficulty: str = Field(default="orta", example="orta", description="kolay | orta | zor")
+    difficulty: DifficultyParam = Field(default=Difficulty.MEDIUM, description="easy | medium | hard")
     question_type: str = Field(default="multiple_choice", example="multiple_choice")
     chapter_index: Optional[int] = Field(
         default=None,
@@ -140,9 +142,9 @@ class QuizSource(BaseModel):
 class CreateQuizRequest(BaseModel):
     source: QuizSource
     question_count: int = Field(default=5, ge=1, le=10, example=5, description="Üretilecek soru sayısı (1-10)")
-    difficulty: Literal["easy", "medium", "hard"] = Field(
-        default="medium",
-        example="medium",
+    # Yeni RESTful uç: yalnızca İngilizce değerler (eski Türkçe takma adlar kabul edilmez)
+    difficulty: Difficulty = Field(
+        default=Difficulty.MEDIUM,
         description="Zorluk seviyesi: easy | medium | hard",
     )
 
@@ -234,7 +236,7 @@ class EngineServeQuizResponse(BaseModel):
     author: Optional[str] = Field(None, example="Sabahattin Ali")
     chapter_index: int = Field(..., example=1)
     chapter_title: str = Field(..., example="Bölüm 1: Giriş")
-    difficulty: str = Field("orta", example="orta")
+    difficulty: str = Field("medium", example="medium")
     cache_hit: bool = Field(..., example=True, description="Sorular doğrudan havuzdan mı geldi (0ms) yoksa LLM ile yeni mi üretildi?")
     total_pool_size: int = Field(..., example=18, description="Bu bölüm için havuzdaki toplam soru adedi")
     question_count: int = Field(..., example=5)

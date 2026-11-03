@@ -122,7 +122,7 @@ When connecting to your local machine from an emulator or a physical device:
 
 ## API Endpoint Reference
 
-Difficulty values on the `/quiz/*` endpoints are Turkish: `kolay` (easy), `orta` (medium), `zor` (hard). The RESTful `/quizzes` endpoint uses `easy`, `medium`, `hard`.
+All endpoints take `difficulty` as `easy`, `medium` (default) or `hard`. Any other value returns `422`.
 
 ### 1. System Status
 ```http
@@ -201,7 +201,7 @@ Content-Type: application/json
   "title": "The Adventures of Sherlock Holmes",
   "author": "Arthur Conan Doyle",
   "num_questions": 5,
-  "difficulty": "orta",
+  "difficulty": "medium",
   "question_type": "multiple_choice"
 }
 ```
@@ -238,7 +238,7 @@ Content-Type: multipart/form-data
 *Form fields:*
 - `file`: PDF file (binary, max 50 MB)
 - `num_questions`: int (default 5, between 1 and 10)
-- `difficulty`: string (`kolay` | `orta` | `zor`)
+- `difficulty`: string (`easy` | `medium` | `hard`, default `medium`)
 - `question_type`: string (`multiple_choice`)
 
 #### Generate a quiz from an EPUB
@@ -249,7 +249,7 @@ Content-Type: multipart/form-data
 *Form fields:*
 - `file`: EPUB file (binary, max 50 MB)
 - `num_questions`: int (default 5, between 1 and 10)
-- `difficulty`: string (`kolay` | `orta` | `zor`)
+- `difficulty`: string (`easy` | `medium` | `hard`, default `medium`)
 - `question_type`: string (`multiple_choice`)
 
 ---
@@ -271,7 +271,7 @@ When the same book is imported again, the question pool of every chapter whose t
 
 #### Get a chapter quiz (cache hit / on demand)
 ```http
-GET /api/v1/quiz/serve?book_id={book_id}&chapter_index={chapter_index}&count=5&difficulty=orta&hide_answers=true
+GET /api/v1/quiz/serve?book_id={book_id}&chapter_index={chapter_index}&count=5&difficulty=medium&hide_answers=true
 ```
 - If the pool has enough questions: returns a random sample from the pool immediately (`cache_hit: true`).
 - If the pool is too small: generates questions from the chapter text with the LLM and saves them to the pool (`cache_hit: false`).
@@ -297,7 +297,7 @@ The mobile client sends only the question ID and the selected option, without kn
 
 #### Pre-populate a question pool
 ```http
-POST /api/v1/quiz/populate?book_id={book_id}&chapter_index={chapter_index}&target_count=15&difficulty=orta
+POST /api/v1/quiz/populate?book_id={book_id}&chapter_index={chapter_index}&target_count=15&difficulty=medium
 X-Admin-Key: {ADMIN_API_KEY}
 ```
 Fills a chapter's question pool in the background (admin / cron) up to `target_count` questions; if the pool is partially filled, only the missing questions are generated. **Admin endpoint:** requires `X-Admin-Key`.

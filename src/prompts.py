@@ -1,3 +1,5 @@
+from src.difficulty import normalize_difficulty
+
 # Prompt veya üretim kuralları değişince artırın; havuzdaki eski sorular bu alanla ayırt edilir.
 PROMPT_VERSION = "2026-11-02.2"
 
@@ -164,7 +166,7 @@ def build_quiz_prompt(
     context: str,
     count: int = 5,
     language: str = None,
-    difficulty: str = "orta",
+    difficulty: str = "medium",
 ) -> str:
     """
     Quiz üretimi için prompt oluşturur.
@@ -174,7 +176,7 @@ def build_quiz_prompt(
         context: LLM'e verilecek metin bağlamı
         count: Üretilecek soru sayısı
         language: Soru dili. None ise context'ten otomatik algılanır.
-        difficulty: Soru zorluk derecesi ("kolay", "orta", "zor")
+        difficulty: Soru zorluk derecesi ("easy", "medium", "hard")
 
     Returns:
         Formatlanmış prompt string
@@ -183,10 +185,10 @@ def build_quiz_prompt(
         language = detect_language(context)
 
     diff_instruction = ""
-    diff_lower = str(difficulty or "").lower()
-    if diff_lower in ("kolay", "easy"):
+    diff_lower = normalize_difficulty(difficulty)
+    if diff_lower == "easy":
         diff_instruction = "\n\nDIFFICULTY REQUIREMENT: Easy / Straightforward. Focus on direct, key facts clearly stated in the text."
-    elif diff_lower in ("zor", "hard"):
+    elif diff_lower == "hard":
         diff_instruction = "\n\nDIFFICULTY REQUIREMENT: Hard / Challenging. Focus on nuanced, analytical details and deeper comprehension."
 
     return MULTIPLE_CHOICE_PROMPT.format(

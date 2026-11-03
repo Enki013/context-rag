@@ -2,6 +2,25 @@ package com.contextrag.quizapp.data
 
 import com.google.gson.annotations.SerializedName
 
+/**
+ * Quiz zorluk seviyeleri. Sunucuya her zaman İngilizce değer gönderilir;
+ * ekranda Türkçe etiket gösterilir.
+ */
+object Difficulty {
+    const val EASY = "easy"
+    const val MEDIUM = "medium"
+    const val HARD = "hard"
+
+    val all = listOf(EASY, MEDIUM, HARD)
+
+    fun label(value: String): String = when (value) {
+        EASY -> "Kolay"
+        MEDIUM -> "Orta"
+        HARD -> "Zor"
+        else -> value.replaceFirstChar { it.uppercase() }
+    }
+}
+
 data class HealthResponse(
     val status: String,
     @SerializedName("ollama_connected") val ollamaConnected: Boolean,
@@ -62,7 +81,7 @@ data class ServeQuizResponse(
     val author: String? = null,
     @SerializedName("chapter_index") val chapterIndex: Int,
     @SerializedName("chapter_title") val chapterTitle: String,
-    val difficulty: String = "orta",
+    val difficulty: String = Difficulty.MEDIUM,
     @SerializedName("cache_hit") val cacheHit: Boolean = false,
     @SerializedName("total_pool_size") val totalPoolSize: Int = 0,
     @SerializedName("question_count") val questionCount: Int = 0,

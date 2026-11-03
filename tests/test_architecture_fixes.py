@@ -6,6 +6,7 @@ Mimari incelemede bulunan kritik hataların regresyon testleri:
 örnekleme kapsamı, stale bölüm indeksi, populate, hile koruması ve admin uçları.
 """
 
+import os
 import random
 from collections import Counter
 from unittest.mock import patch
@@ -318,7 +319,7 @@ def test_verify_fails_closed_on_unparseable_output():
 def test_group_generation_retries_when_verification_drops_questions():
     calls = {"n": 0}
 
-    def fake_llm(context, count, language, difficulty="orta"):
+    def fake_llm(context, count, language, difficulty="medium"):
         calls["n"] += 1
         return [dict(_photo_q(), question=f"Soru {calls['n']}-{i} nedir?") for i in range(count)]
 
@@ -328,7 +329,7 @@ def test_group_generation_retries_when_verification_drops_questions():
     with patch("src.quiz_generator._call_llm", side_effect=fake_llm), \
             patch("src.quiz_generator._verify_questions", side_effect=fake_verify), \
             patch("src.quiz_generator.VERIFY_ANSWERS", True):
-        out = _generate_verified_for_group(CTX, 3, "English", "orta")
+        out = _generate_verified_for_group(CTX, 3, "English", "medium")
     assert calls["n"] == 2 and len(out) == 2
 
 
@@ -428,3 +429,69 @@ def test_health_ok_when_verifier_installed():
             patch("api.routes.health.get_cache_status", return_value={"exists": True, "num_books": 1}):
         body = client.get("/api/v1/health").json()
     assert body["verify_model_installed"] is True and body["status"] == "ok"
+
+
+# ─── İngilizce zorluk değerleri ─────────────────────────────────────────────
+
+
+def test_normalize_difficulty_accepts_english_and_legacy():
+    from src.difficulty import normalize_difficulty
+
+    assert normalize_difficulty("easy") == "easy"
+    assert normalize_difficulty("HARD") == "hard"
+    assert normalize_difficulty("orta") == "medium"
+    assert normalize_difficulty(" Zor ") == "hard"
+    assert normalize_difficulty(None) == "medium"
+    with pytest.raises(ValueError):
+        normalize_difficulty("extreme")
+
+
+def test_prompt_difficulty_legacy_alias_matches_english():
+    from src.prompts import build_quiz_prompt
+
+    assert build_quiz_prompt("ctx", difficulty="kolay") == build_quiz_prompt("ctx", difficulty="easy")
+    assert "Hard / Challenging" in build_quiz_prompt("ctx", difficulty="hard")
+
+
+def test_openapi_lists_only_english_difficulties():
+    schema = client.get("/openapi.json").json()
+    assert schema["components"]["schemas"]["Difficulty"]["enum"] == ["easy", "medium", "hard"]
+    serve_params = schema["paths"]["/api/v1/quiz/serve"]["get"]["parameters"]
+    diff = next(p for p in serve_params if p["name"] == "difficulty")
+    assert diff["schema"]["default"] == "medium"
+    assert "orta" not in str(schema) and "kolay" not in str(schema)
+
+
+def test_serve_accepts_english_and_legacy_difficulty(temp_db):
+    register_book_content(
+        book_id="diff_book", title="T", author="A", source_format="epub",
+        chapters=[{"chapter_index": 1, "title": "B1", "raw_text": "Metin"}], db_path=temp_db,
+    )
+    save_questions_to_pool("diff_book", 1, [_q(i) for i in range(3)], difficulty="hard", db_path=temp_db)
+    base = "/api/v1/quiz/serve?book_id=diff_book&chapter_index=1&count=2"
+    with patch("src.question_bank.QUIZ_ENGINE_DB_PATH", temp_db):
+        r_en = client.get(base + "&difficulty=hard")
+        r_legacy = client.get(base + "&difficulty=zor")  # eski Android sürümleri
+        r_bad = client.get(base + "&difficulty=extreme")
+    assert r_en.status_code == 200 and r_en.json()["difficulty"] == "hard" and r_en.json()["cache_hit"] is True
+    assert r_legacy.status_code == 200 and r_legacy.json()["difficulty"] == "hard"
+    assert r_bad.status_code == 422
+
+
+def test_legacy_difficulty_rows_are_migrated(tmp_path):
+    import sqlite3
+    import src.question_bank as qb
+
+    db = str(tmp_path / "legacy.db")
+    qb.init_question_bank_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO books (id, title) VALUES ('b', 't')")
+        for d in ("orta", "zor", "kolay", "medium"):
+            conn.execute(
+                "INSERT INTO question_bank (book_id, chapter_index, question, options, correct_answer, explanation,"
+                " difficulty) VALUES ('b', 1, 'q', '[]', 'A', 'e', ?)", (d,))
+    qb._initialized_dbs.discard(os.path.abspath(db))  # süreç yeniden başlamış gibi
+    qb.init_question_bank_db(db)
+    with sqlite3.connect(db) as conn:
+        values = sorted(r[0] for r in conn.execute("SELECT difficulty FROM question_bank"))
+    assert values == ["easy", "hard", "medium", "medium"]

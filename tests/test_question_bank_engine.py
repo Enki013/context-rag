@@ -104,11 +104,11 @@ def test_question_pooling_and_cache_hit(temp_db):
         book_id="book_pool_test",
         chapter_index=1,
         questions=mock_questions,
-        difficulty="orta",
+        difficulty="medium",
         db_path=temp_db,
     )
     assert saved == 10
-    assert count_pool_questions("book_pool_test", 1, difficulty="orta", db_path=temp_db) == 10
+    assert count_pool_questions("book_pool_test", 1, difficulty="medium", db_path=temp_db) == 10
 
     # Havuzdan 5 soru iste (Cache Hit olmalı ve LLM çağrılmamalı)
     with patch("src.question_bank.generate_quiz") as mock_llm:
@@ -116,7 +116,7 @@ def test_question_pooling_and_cache_hit(temp_db):
             book_id="book_pool_test",
             chapter_index=1,
             count=5,
-            difficulty="orta",
+            difficulty="medium",
             hide_answers=True,
             db_path=temp_db,
         )

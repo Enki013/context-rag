@@ -95,7 +95,7 @@ class ApiClient(
         bookId: String,
         chapterIndex: Int = 1,
         count: Int = 5,
-        difficulty: String = "orta",
+        difficulty: String = Difficulty.MEDIUM,
         hideAnswers: Boolean = true
     ): Result<ServeQuizResponse> = withContext(ioDispatcher) {
         try {

@@ -8,7 +8,7 @@ import logging
 import os
 import shutil
 import sqlite3
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from config import CATALOG_DB_PATH, MAX_FILE_SIZE_MB, UPLOAD_DIR
 from api.schemas import (
@@ -26,6 +26,7 @@ from api.schemas import (
 )
 from api.security import is_admin, require_admin
 from src.chunker import chunk_text
+from src.difficulty import Difficulty, DifficultyParam
 from src.dataset_search import get_chunks_for_book
 from src.pdf_processor import extract_text_from_bytes, get_full_text
 from src.epub_processor import extract_text_from_epub_bytes
@@ -97,7 +98,7 @@ def generate_quiz_from_book(req: BookQuizRequest):
         raw_quiz = generate_quiz(
             quiz_chunks,
             num_questions=req.num_questions,
-            difficulty=req.difficulty,
+            difficulty=req.difficulty.value,
             question_type=req.question_type,
         )
     except Exception as e:
@@ -131,7 +132,7 @@ def generate_quiz_from_book(req: BookQuizRequest):
 def generate_quiz_from_pdf(
     file: UploadFile = File(..., description="Quiz üretilecek PDF dosyası"),
     num_questions: int = Form(5, ge=1, le=10, description="Soru sayısı (1-10)"),
-    difficulty: str = Form("orta", description="kolay | orta | zor"),
+    difficulty: Annotated[DifficultyParam, Form(description="easy | medium | hard")] = Difficulty.MEDIUM,
     question_type: str = Form("multiple_choice", description="Soru türü"),
 ):
     """
@@ -168,7 +169,7 @@ def generate_quiz_from_pdf(
     raw_quiz = generate_quiz(
         chunks,
         num_questions=num_questions,
-        difficulty=difficulty,
+        difficulty=difficulty.value,
         question_type=question_type,
     )
 
@@ -197,7 +198,7 @@ def generate_quiz_from_pdf(
 def generate_quiz_from_epub(
     file: UploadFile = File(..., description="Quiz üretilecek EPUB dosyası"),
     num_questions: int = Form(5, ge=1, le=10, description="Soru sayısı (1-10)"),
-    difficulty: str = Form("orta", description="kolay | orta | zor"),
+    difficulty: Annotated[DifficultyParam, Form(description="easy | medium | hard")] = Difficulty.MEDIUM,
     question_type: str = Form("multiple_choice", description="Soru türü"),
 ):
     """
@@ -237,7 +238,7 @@ def generate_quiz_from_epub(
     raw_quiz = generate_quiz(
         chunks,
         num_questions=num_questions,
-        difficulty=difficulty,
+        difficulty=difficulty.value,
         question_type=question_type,
     )
 
@@ -332,7 +333,7 @@ def serve_quiz_endpoint(
     book_id: str = Query(..., description="Kitap ID (örn: book_kurk_mantolu_madonna veya 1661)"),
     chapter_index: int = Query(1, ge=1, description="1-tabanlı bölüm numarası"),
     count: int = Query(5, ge=1, le=20, description="Döndürülecek soru sayısı (1-20)"),
-    difficulty: str = Query("orta", description="kolay | orta | zor"),
+    difficulty: Annotated[DifficultyParam, Query(description="easy | medium | hard")] = Difficulty.MEDIUM,
     hide_answers: bool = Query(True, description="Doğru şık ve açıklamayı gizle (hile koruması). `false` yalnızca X-Admin-Key ile."),
     x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key"),
 ):
@@ -350,7 +351,7 @@ def serve_quiz_endpoint(
             book_id=book_id,
             chapter_index=chapter_index,
             count=count,
-            difficulty=difficulty,
+            difficulty=difficulty.value,
             hide_answers=hide_answers,
         )
         return EngineServeQuizResponse(
@@ -417,7 +418,7 @@ def populate_pool_endpoint(
     book_id: str = Query(..., description="Kitap ID"),
     chapter_index: int = Query(..., ge=1, description="Bölüm numarası"),
     target_count: int = Query(10, ge=1, le=30, description="Havuzda olması hedeflenen toplam soru sayısı"),
-    difficulty: str = Query("orta", description="kolay | orta | zor"),
+    difficulty: Annotated[DifficultyParam, Query(description="easy | medium | hard")] = Difficulty.MEDIUM,
 ):
     """
     Belirli bir bölüm için soru havuzunu `target_count` soruya kadar doldurur.
@@ -429,14 +430,14 @@ def populate_pool_endpoint(
             book_id=book_id,
             chapter_index=chapter_index,
             target_count=target_count,
-            difficulty=difficulty,
+            difficulty=difficulty.value,
         )
         total_now = result["total_pool_size"]
         return {
             "status": "ok",
             "book_id": book_id,
             "chapter_index": chapter_index,
-            "difficulty": difficulty,
+            "difficulty": difficulty.value,
             "generated": result["generated"],
             "total_pool_size": total_now,
             "message": f"Bölüm {chapter_index} havuzu hazırlandı. Toplam {total_now} soru mevcut.",

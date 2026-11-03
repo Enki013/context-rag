@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.contextrag.quizapp.data.Difficulty
 import com.contextrag.quizapp.ui.components.expressiveBounceClick
 import com.contextrag.quizapp.ui.theme.CacheHitGreen
 import com.contextrag.quizapp.ui.theme.CacheHitGreenContainer
@@ -320,7 +321,7 @@ fun QuizScreen(
                     }
 
                     Text(
-                        text = "Zorluk: ${state.quizDifficulty.replaceFirstChar { it.uppercase() }}",
+                        text = "Zorluk: ${Difficulty.label(state.quizDifficulty)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )

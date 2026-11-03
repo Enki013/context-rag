@@ -9,6 +9,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import LLM_MODEL, VERIFY_ANSWERS, VERIFY_MODEL, VERIFY_THINK
+from src.difficulty import normalize_difficulty
 from src.prompts import PROMPT_VERSION, VERIFY_PROMPT, build_quiz_prompt, build_system_prompt, detect_language
 
 logger = logging.getLogger(__name__)
@@ -328,7 +329,7 @@ def _call_llm(
     context: str,
     count: int,
     language: str,
-    difficulty: str = "orta",
+    difficulty: str = "medium",
 ) -> list[dict]:
     """Tek bir LLM çağrısı yapıp geçerli soruları döner."""
     prompt = build_quiz_prompt(
@@ -526,7 +527,7 @@ def _generate_verified_for_group(context: str, count: int, language: str, diffic
 def generate_quiz(
     chunks: list,
     num_questions: int = 5,
-    difficulty: str = "orta",
+    difficulty: str = "medium",
     question_type: str = "multiple_choice",
     randomize: bool = True,
 ) -> list[dict]:
@@ -538,7 +539,7 @@ def generate_quiz(
     Args:
         chunks: Metin chunk'ları listesi (str veya dict with "text" and "source_pages")
         num_questions: Üretilecek toplam soru sayısı
-        difficulty: Zorluk derecesi ("kolay", "orta", "zor")
+        difficulty: Zorluk derecesi ("easy", "medium", "hard"; eski "kolay/orta/zor" da kabul edilir)
         question_type: Soru türü ("multiple_choice")
         randomize: True ise her seferinde farklı chunk gruplarından rastgele örnekleme yapar
 
@@ -551,6 +552,7 @@ def generate_quiz(
     """
     if not chunks:
         raise RuntimeError("Quiz üretilecek chunk bulunamadı")
+    difficulty = normalize_difficulty(difficulty)
 
     sample_texts = [_get_chunk_text(c) for c in chunks[:3]]
     full_sample = " ".join(sample_texts)
