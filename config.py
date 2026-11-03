@@ -32,6 +32,13 @@ VERIFY_MODEL = os.environ.get("QUIZ_VERIFY_MODEL", "gemma4:31b")
 # "1": thinking açık (yalnızca destekleyen modellerde). "auto": modelin kendi varsayılanı.
 VERIFY_THINK = {"0": False, "1": True}.get(os.environ.get("QUIZ_VERIFY_THINK", "0"))
 
+# Tekrar eleme (bge-m3 benzerliği). İki ölçütten biri tutarsa tekrar sayılır:
+#  - soru + doğru cevap >= 0.85: aynı soru, aynı cevap (havuzdaki gerçek tekrar 0.89, farklı sorular <= 0.79)
+#  - yalnızca soru >= 0.95: aynı soru, farklı/çelişen cevap (gözlenen örnek 0.958)
+# 1.0 ilgili ölçütü kapatır. Yanlışlıkla bir soru atmak, tekrar/çelişki göstermekten ucuzdur.
+DEDUP_SIMILARITY_THRESHOLD = float(os.environ.get("QUIZ_DEDUP_THRESHOLD", "0.85"))
+DEDUP_QUESTION_THRESHOLD = float(os.environ.get("QUIZ_DEDUP_QUESTION_THRESHOLD", "0.95"))
+
 # Contextual Retrieval
 CONTEXTUAL_LLM_THRESHOLD = 50  # Bu chunk sayısının altında LLM ile bağlam üretilir, üstünde deterministic
 

@@ -520,8 +520,11 @@ def get_chunks_for_book(
 
     logger.info(f"Kitap '{title}' ({len(clean_text):,} karakter) → {len(raw_chunks)} chunk.")
 
-    # 4. Quiz için temsil edici chunk'ları seç (tüm metni kapsayan katmanlı örnekleme)
-    selected_chunks = _stratified_sample(raw_chunks, max_chunks)
+    # 4. Quiz için temsil edici chunk'ları seç: metnin farklı yerlerinden ardışık pencereler
+    #    (tek tek dağınık chunk'lar birleştirilince LLM birbirinden kopuk sahneleri karıştırıyordu)
+    from src.quiz_generator import MAX_CHUNKS_PER_CALL
+    window = max(1, min(MAX_CHUNKS_PER_CALL, max_chunks))
+    selected_chunks = _sample_windows(raw_chunks, n_windows=max(1, max_chunks // window), window=window)
 
     return [
         {
@@ -537,18 +540,20 @@ def get_chunks_for_book(
     ]
 
 
-def _stratified_sample(items: list, k: int, rng: Optional[random.Random] = None) -> list:
+def _sample_windows(items: list, n_windows: int, window: int, rng: Optional[random.Random] = None) -> list:
     """
-    Listeyi k eşit dilime böler ve her dilimden bir öğe seçer.
-    Böylece metnin başı, ortası ve sonu her zaman temsil edilir; sıralama korunur.
+    Listeyi n_windows eşit dilime böler ve her dilimden `window` uzunluğunda ardışık bir pencere seçer.
+    Böylece metnin başı, ortası ve sonu temsil edilir, her pencere kendi içinde bütünlüklü kalır.
+    Pencereler çakışmaz ve sıralama korunur.
     """
     n = len(items)
-    if n <= k:
+    if n <= n_windows * window:
         return list(items)
     rng = rng or random
     picks = []
-    for i in range(k):
-        lo = (i * n) // k
-        hi = ((i + 1) * n) // k - 1
-        picks.append(items[rng.randint(lo, max(lo, hi))])
+    for i in range(n_windows):
+        lo = (i * n) // n_windows
+        hi = ((i + 1) * n) // n_windows  # dilimin sonu (hariç)
+        start = rng.randint(lo, max(lo, hi - window))
+        picks.extend(items[start:start + window])
     return picks

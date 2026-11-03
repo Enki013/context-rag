@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 import config
 from api.main import app
 from src.chunker import chunk_text
-from src.dataset_search import _stratified_sample
+from src.dataset_search import _sample_windows
 from src.question_bank import (
     count_pool_questions,
     get_cached_questions,
@@ -123,14 +123,17 @@ def test_chunk_start_char_matches_real_position():
         assert text[c["start_char"]: c["start_char"] + c["length"]] == c["text"]
 
 
-def test_stratified_sample_covers_whole_range():
-    items = list(range(39))
+def test_sample_windows_are_contiguous_and_cover_whole_range():
+    items = list(range(100))
     for seed in range(20):
-        picked = _stratified_sample(items, 20, random.Random(seed))
-        assert len(picked) == 20
-        assert picked == sorted(picked)
-        assert picked[-1] >= 37  # son dilim her zaman temsil edilir
-        assert picked[0] <= 1
+        picked = _sample_windows(items, n_windows=4, window=5, rng=random.Random(seed))
+        assert len(picked) == 20 and picked == sorted(picked)
+        windows = [picked[i:i + 5] for i in range(0, 20, 5)]
+        for w in windows:
+            assert w == list(range(w[0], w[0] + 5))  # her pencere ardışık
+        for i, w in enumerate(windows):  # her pencere kendi çeyreğinde: baş, orta, son temsil edilir
+            assert i * 25 <= w[0] and w[-1] < (i + 1) * 25
+    assert _sample_windows(list(range(12)), n_windows=4, window=5) == list(range(12))
 
 
 # ─── Soru bankası: stale indeks ve populate ─────────────────────────────────
@@ -258,7 +261,7 @@ def test_rebalance_script_keeps_correct_text(temp_db):
 
 # ─── Grounding doğrulaması ──────────────────────────────────────────────────
 
-from src.quiz_generator import _evidence_in_context, _generate_verified_for_group, _verify_questions
+from src.quiz_generator import _evidence_in_context, _verify_questions
 
 CTX = (
     "To-day the King of Bohemia came to Baker Street. He said: \u201cThere is the photograph, "
@@ -316,21 +319,86 @@ def test_verify_fails_closed_on_unparseable_output():
     assert chat.call_count == 2  # bir kez yeniden denedi
 
 
-def test_group_generation_retries_when_verification_drops_questions():
-    calls = {"n": 0}
+def _indexed_chunks(n, start=0):
+    return [{"index": start + i, "text": f"Paragraf {start + i}. " + "kelime " * 120} for i in range(n)]
+
+
+def test_generation_runs_in_phases_and_retries_short_groups():
+    """Önce tüm gruplar üretilir, sonra hepsi doğrulanır; eksik kalanlar için ikinci tur yapılır."""
+    events = []
+    counter = {"n": 0}
 
     def fake_llm(context, count, language, difficulty="medium"):
-        calls["n"] += 1
-        return [dict(_photo_q(), question=f"Soru {calls['n']}-{i} nedir?") for i in range(count)]
+        counter["n"] += 1
+        events.append("gen")
+        return [dict(_photo_q(), question=f"Soru {counter['n']}-{i} nedir acaba?") for i in range(count)]
 
     def fake_verify(questions, context):
-        return questions[:1]  # her turda yalnızca biri geçiyor
+        events.append("ver")
+        return questions[:1]  # her grupta tur başına yalnızca bir soru geçiyor
 
+    chunks = _indexed_chunks(10)  # 2 ardışık grup
     with patch("src.quiz_generator._call_llm", side_effect=fake_llm), \
             patch("src.quiz_generator._verify_questions", side_effect=fake_verify), \
             patch("src.quiz_generator.VERIFY_ANSWERS", True):
-        out = _generate_verified_for_group(CTX, 3, "English", "medium")
-    assert calls["n"] == 2 and len(out) == 2
+        out = generate_quiz(chunks, num_questions=4)
+    assert events == ["gen", "gen", "ver", "ver", "gen", "gen", "ver", "ver"]
+    assert len(out) == 4
+
+
+def test_groups_never_mix_non_adjacent_chunks():
+    from src.quiz_generator import _select_chunk_groups
+
+    chunks = _indexed_chunks(5, 0) + _indexed_chunks(5, 100) + _indexed_chunks(3, 200)
+    groups = _select_chunk_groups(chunks, num_questions=10, randomize=False)
+    for g in groups:
+        idx = [c["index"] for c in g]
+        assert idx == list(range(idx[0], idx[0] + len(idx)))
+    assert sorted(len(g) for g in groups) == [3, 5, 5]
+
+
+def test_dedup_removes_exact_and_semantic_duplicates(monkeypatch):
+    from src.quiz_generator import _deduplicate
+
+    monkeypatch.setattr("src.quiz_generator.DEDUP_SIMILARITY_THRESHOLD", 0.85)
+    a = dict(_q(1), question="Why did Victor read Agrippa?")
+    a_paraphrase = dict(_q(2), question="For what reason did Victor study Agrippa?")
+    a_exact = dict(_q(3), question="  why did victor read AGRIPPA? ")
+    b = dict(_q(4), question="Who is the King of Bohemia?")
+    pool = [dict(_q(5), question="What did the King want back?")]
+    pool_like = dict(_q(6), question="What was the King trying to recover?")
+
+    vectors = {  # sahte embedding: benzer sorular aynı yöne bakıyor
+        "Why did Victor": [1, 0, 0], "For what reason": [0.95, 0.31, 0],
+        "Who is the King": [0, 1, 0], "What did the King": [0, 0, 1], "What was the King": [0.1, 0, 0.99],
+    }
+
+    def fake_embed(texts):
+        return [next(v for k, v in vectors.items() if t.startswith(k)) for t in texts]
+
+    with patch("src.quiz_generator._get_embeddings_batch", side_effect=fake_embed):
+        kept = _deduplicate([a, a_paraphrase, a_exact, b, pool_like], existing=pool)
+    assert [q["question"] for q in kept] == [a["question"], b["question"]]
+
+
+def test_dedup_falls_back_to_exact_when_embedding_fails(monkeypatch):
+    from src.quiz_generator import _deduplicate
+
+    monkeypatch.setattr("src.quiz_generator.DEDUP_SIMILARITY_THRESHOLD", 0.85)
+    qs = [dict(_q(1), question="Soru bir nedir?"), dict(_q(2), question="soru bir nedir?"),
+          dict(_q(3), question="Soru iki nedir?")]
+    with patch("src.quiz_generator._get_embeddings_batch", side_effect=RuntimeError("ollama yok")):
+        kept = _deduplicate(qs)
+    assert [q["question"] for q in kept] == ["Soru bir nedir?", "Soru iki nedir?"]
+
+
+def test_pool_generation_excludes_existing_questions(temp_db):
+    _register(temp_db, ["Bölüm metni " * 50])
+    save_questions_to_pool("b1", 1, [dict(_q(0), question="Havuzdaki soru nedir?")], db_path=temp_db)
+    with patch("src.question_bank.generate_quiz", return_value=[_q(1)]) as gen:
+        populate_chapter_pool("b1", 1, target_count=2, db_path=temp_db)
+    excluded = gen.call_args.kwargs["exclude_questions"]
+    assert [q["question"] for q in excluded] == ["Havuzdaki soru nedir?"]
 
 
 def test_evidence_saved_to_pool(temp_db):
@@ -495,3 +563,29 @@ def test_legacy_difficulty_rows_are_migrated(tmp_path):
     with sqlite3.connect(db) as conn:
         values = sorted(r[0] for r in conn.execute("SELECT difficulty FROM question_bank"))
     assert values == ["easy", "hard", "medium", "medium"]
+
+
+def test_dedup_catches_same_question_with_conflicting_answer(monkeypatch):
+    from src.quiz_generator import _deduplicate
+
+    monkeypatch.setattr("src.quiz_generator.DEDUP_SIMILARITY_THRESHOLD", 0.85)
+    monkeypatch.setattr("src.quiz_generator.DEDUP_QUESTION_THRESHOLD", 0.95)
+    first = dict(_q(1), question="What is Holmes' opinion of love?")
+    second = dict(_q(2), question="What does Holmes think about love?")
+    second["options"] = ["A) Useful for observers", "B) x", "C) y", "D) z"]
+
+    def fake_embed(texts):
+        # Soru metinleri neredeyse aynı yöne, soru+cevap metinleri farklı yönlere bakıyor
+        out = []
+        for t in texts:
+            if "Ankara" in t:
+                out.append([1, 0, 0])
+            elif "Useful" in t:
+                out.append([0, 1, 0])
+            else:
+                out.append([0, 0, 1] if "opinion" in t else [0.1, 0, 0.995])
+        return out
+
+    with patch("src.quiz_generator._get_embeddings_batch", side_effect=fake_embed):
+        kept = _deduplicate([first, second])
+    assert [q["question"] for q in kept] == [first["question"]]

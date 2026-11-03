@@ -3,13 +3,15 @@ import re
 import math
 import random
 import logging
+import numpy as np
 import ollama as ollama_client
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import LLM_MODEL, VERIFY_ANSWERS, VERIFY_MODEL, VERIFY_THINK
+from config import DEDUP_QUESTION_THRESHOLD, DEDUP_SIMILARITY_THRESHOLD, LLM_MODEL, VERIFY_ANSWERS, VERIFY_MODEL, VERIFY_THINK
 from src.difficulty import normalize_difficulty
+from src.embedder import _get_embeddings_batch
 from src.prompts import PROMPT_VERSION, VERIFY_PROMPT, build_quiz_prompt, build_system_prompt, detect_language
 
 logger = logging.getLogger(__name__)
@@ -273,6 +275,24 @@ def _is_boilerplate_chunk(text: str) -> bool:
     return False
 
 
+def _contiguous_runs(chunks: list) -> list[list]:
+    """
+    Chunk listesini metinde birbirini takip eden parçalara böler.
+    İndeksi olan iki chunk arasında boşluk varsa (örn. kitabın farklı yerlerinden örneklenmişse)
+    yeni bir parça başlar; böylece birbirinden kopuk metinler aynı LLM bağlamına yapıştırılmaz.
+    """
+    runs: list[list] = []
+    prev_index = None
+    for chunk in chunks:
+        index = chunk.get("index") if isinstance(chunk, dict) else None
+        adjacent = index is None or prev_index is None or index == prev_index + 1
+        if not runs or not adjacent:
+            runs.append([])
+        runs[-1].append(chunk)
+        prev_index = index
+    return runs
+
+
 def _select_chunk_groups(
     chunks: list,
     num_questions: int,
@@ -280,6 +300,7 @@ def _select_chunk_groups(
 ) -> list[list]:
     """
     Tüm chunk'ları kapsayacak şekilde gruplar oluşturur.
+    Her grup metinde ardışık chunk'lardan oluşur (en fazla MAX_CHUNKS_PER_CALL).
     Yayıncı künyesi ve telif gibi boilerplate chunk'ları eler.
     Rastgele katmanlı örnekleme (stratified random sampling) ile her çağrıda
     kitabın farklı bölümlerinden zengin ve taze soru üretilmesini sağlar.
@@ -291,14 +312,13 @@ def _select_chunk_groups(
     else:
         chunks_to_use = chunks
 
-    if len(chunks_to_use) <= MAX_CHUNKS_PER_CALL:
-        return [chunks_to_use]
-
-    # 2. MAX_CHUNKS_PER_CALL boyutunda gruplar oluştur
+    # 2. Ardışık parçaları MAX_CHUNKS_PER_CALL boyutunda gruplara böl
     groups = []
-    for i in range(0, len(chunks_to_use), MAX_CHUNKS_PER_CALL):
-        group = chunks_to_use[i : i + MAX_CHUNKS_PER_CALL]
-        groups.append(group)
+    for run in _contiguous_runs(chunks_to_use):
+        for i in range(0, len(run), MAX_CHUNKS_PER_CALL):
+            groups.append(run[i : i + MAX_CHUNKS_PER_CALL])
+    if len(groups) <= 1:
+        return groups
 
     num_calls = math.ceil(num_questions / max(1, num_questions // len(groups) if len(groups) > 0 else 1))
     num_calls = min(num_calls, len(groups))
@@ -503,25 +523,63 @@ def _verify_questions(questions: list[dict], context: str) -> list[dict]:
     return verified
 
 
-def _generate_verified_for_group(context: str, count: int, language: str, difficulty: str) -> list[dict]:
-    """Bir chunk grubu için soru üretir, şıkları karıştırır ve doğrular; eksik kalırsa bir kez daha dener."""
-    accepted: list[dict] = []
-    seen = set()
-    for attempt in range(MAX_GROUP_ATTEMPTS if VERIFY_ANSWERS else 1):
-        need = count - len(accepted)
-        if need <= 0:
-            break
-        candidates = []
-        for q in _call_llm(context, need, language, difficulty=difficulty):
-            key = _normalize_for_match(q["question"])
-            if key in seen:
+def _dedup_text(q: dict) -> str:
+    """Tekrar kontrolünde kullanılan metin: soru + doğru şıkkın metni (aynı soru kökü, farklı cevap ayrılsın)."""
+    options = q.get("options") or []
+    letter = q.get("correct_answer")
+    answer = ""
+    if letter in _LETTERS and len(options) == 4:
+        answer = _strip_option_prefix(options[_LETTERS.index(letter)])
+    return f"{q['question']} {answer}".strip()
+
+
+def _deduplicate(candidates: list[dict], existing: list[dict] | None = None) -> list[dict]:
+    """
+    Tekrar eden soruları eler: önce birebir aynı soru metni, sonra bge-m3 embedding benzerliği.
+    Soru+cevap benzerliği >= DEDUP_SIMILARITY_THRESHOLD (aynı soru, aynı cevap) veya yalnızca soru
+    benzerliği >= DEDUP_QUESTION_THRESHOLD (aynı soru, çelişen cevap) ise tekrar sayılır. Hem aday listesinin kendi içinde hem de
+    `existing` (örn. havuzdaki sorular) ile karşılaştırır; sıra korunur, ilk gelen kalır.
+    Embedding alınamazsa yalnızca birebir kontrol yapılır (soru kaybetmemek için).
+    """
+    existing = existing or []
+    seen = {_normalize_for_match(e["question"]) for e in existing}
+    unique = []
+    for q in candidates:
+        key = _normalize_for_match(q["question"])
+        if key in seen:
+            logger.info(f"Birebir tekrar atlandı: '{q['question'][:70]}'")
+            continue
+        seen.add(key)
+        unique.append(q)
+
+    if not unique or (DEDUP_SIMILARITY_THRESHOLD >= 1.0 and DEDUP_QUESTION_THRESHOLD >= 1.0):
+        return unique
+
+    items = existing + unique
+    try:
+        texts = [_dedup_text(q) for q in items] + [q["question"] for q in items]
+        vecs = np.asarray(_get_embeddings_batch(texts), dtype=float)
+        vecs /= np.clip(np.linalg.norm(vecs, axis=1, keepdims=True), 1e-12, None)
+    except Exception as e:
+        logger.warning(f"Embedding alınamadı, yalnızca birebir tekrar kontrolü yapıldı: {e}")
+        return unique
+    qa_vecs, q_vecs = vecs[: len(items)], vecs[len(items):]
+
+    kept_idx = list(range(len(existing)))
+    kept = []
+    for offset, q in enumerate(unique):
+        i = len(existing) + offset
+        if kept_idx:
+            sim_qa = float(np.max(qa_vecs[kept_idx] @ qa_vecs[i]))
+            sim_q = float(np.max(q_vecs[kept_idx] @ q_vecs[i]))
+            if sim_qa >= DEDUP_SIMILARITY_THRESHOLD or sim_q >= DEDUP_QUESTION_THRESHOLD:
+                logger.info(
+                    f"Benzer soru atlandı (soru+cevap {sim_qa:.2f}, soru {sim_q:.2f}): '{q['question'][:70]}'"
+                )
                 continue
-            seen.add(key)
-            candidates.append(_shuffle_options(q))
-        if VERIFY_ANSWERS:
-            candidates = _verify_questions(candidates, context)
-        accepted.extend(candidates[:need])
-    return accepted
+        kept_idx.append(i)
+        kept.append(q)
+    return kept
 
 
 def generate_quiz(
@@ -530,11 +588,18 @@ def generate_quiz(
     difficulty: str = "medium",
     question_type: str = "multiple_choice",
     randomize: bool = True,
+    exclude_questions: list[dict] | None = None,
 ) -> list[dict]:
     """
     Chunk'lardan çoktan seçmeli quiz soruları üretir.
-    Tüm PDF'i veya metni kapsayacak şekilde chunk gruplarına böler ve
-    her gruptan orantılı soru üretir.
+    Metni ardışık chunk gruplarına böler ve her gruptan orantılı soru üretir.
+
+    Her tur üç aşamadan oluşur; aşamalar gruplar arasında toplu çalışır, böylece Ollama
+    üretici ve doğrulayıcı modeller arasında grup başına değil, tur başına bir kez geçiş yapar:
+      1. Üretim: eksik soru kalan her grup için üretici LLM çağrısı + şık karıştırma
+      2. Doğrulama: her grubun adayları kendi metnine karşı doğrulanır (VERIFY_ANSWERS)
+      3. Tekrar eleme: tüm adaylar birbirine, kabul edilmişlere ve exclude_questions'a karşı
+    Doğrulama açıksa eksik kalan gruplar için bir tur daha yapılır.
 
     Args:
         chunks: Metin chunk'ları listesi (str veya dict with "text" and "source_pages")
@@ -542,6 +607,7 @@ def generate_quiz(
         difficulty: Zorluk derecesi ("easy", "medium", "hard"; eski "kolay/orta/zor" da kabul edilir)
         question_type: Soru türü ("multiple_choice")
         randomize: True ise her seferinde farklı chunk gruplarından rastgele örnekleme yapar
+        exclude_questions: Tekrarı istenmeyen mevcut sorular (örn. havuzdakiler)
 
     Returns:
         [{"question": "...", "options": [...], "correct_answer": "A",
@@ -555,8 +621,7 @@ def generate_quiz(
     difficulty = normalize_difficulty(difficulty)
 
     sample_texts = [_get_chunk_text(c) for c in chunks[:3]]
-    full_sample = " ".join(sample_texts)
-    detected_lang = detect_language(full_sample)
+    detected_lang = detect_language(" ".join(sample_texts))
     logger.info(f"Algılanan dil: {detected_lang}, zorluk: {difficulty}")
     logger.info(f"Toplam chunk sayısı: {len(chunks)}, hedef soru: {num_questions}")
 
@@ -564,29 +629,58 @@ def generate_quiz(
     logger.info(f"{len(groups)} chunk grubu oluşturuldu")
 
     questions_per_group = max(1, math.ceil(num_questions / len(groups)))
-    all_questions = []
-
+    plan = []
+    remaining = num_questions
     for i, group in enumerate(groups):
-        remaining = num_questions - len(all_questions)
         if remaining <= 0:
             break
-
-        count = min(questions_per_group, remaining)
+        target = min(questions_per_group, remaining)
+        remaining -= target
         context, included = _build_context(group)
-        source_pages = _collect_source_pages(included)
-        chunk_indices = _collect_chunk_indices(included)
-
+        plan.append({"context": context, "included": included, "target": target,
+                     "accepted": [], "candidates": []})
         logger.info(
-            f"Grup {i + 1}/{len(groups)}: {len(group)} chunk, "
-            f"{len(context)} karakter, {count} soru hedefi, "
-            f"sayfalar: {source_pages}"
+            f"Grup {i + 1}/{len(groups)}: {len(included)} chunk, {len(context)} karakter, "
+            f"{target} soru hedefi, sayfalar: {_collect_source_pages(included)}"
         )
 
-        questions = _generate_verified_for_group(context, count, detected_lang, difficulty)
+    exclude = list(exclude_questions or [])
+    rounds = MAX_GROUP_ATTEMPTS if VERIFY_ANSWERS else 1
+    for round_no in range(1, rounds + 1):
+        pending = [p for p in plan if len(p["accepted"]) < p["target"]]
+        if not pending:
+            break
+        logger.info(f"Tur {round_no}/{rounds}: {len(pending)} grup")
+
+        # Aşama 1: üretim (üretici model)
+        for p in pending:
+            need = p["target"] - len(p["accepted"])
+            p["candidates"] = [
+                _shuffle_options(q)
+                for q in _call_llm(p["context"], need, detected_lang, difficulty=difficulty)
+            ]
+
+        # Aşama 2: doğrulama (doğrulayıcı model)
+        if VERIFY_ANSWERS:
+            for p in pending:
+                p["candidates"] = _verify_questions(p["candidates"], p["context"])
+
+        # Aşama 3: tekrar eleme (tek embedding çağrısı)
+        already = exclude + [q for p in plan for q in p["accepted"]]
+        unique_ids = {id(q) for q in _deduplicate([q for p in pending for q in p["candidates"]], already)}
+        for p in pending:
+            need = p["target"] - len(p["accepted"])
+            p["accepted"].extend([q for q in p["candidates"] if id(q) in unique_ids][:need])
+            p["candidates"] = []
+
+    all_questions = []
+    for p in plan:
+        included = p["included"]
+        source_pages = _collect_source_pages(included)
+        chunk_indices = _collect_chunk_indices(included)
         source_chapter = next((c.get("source_chapter") for c in included if isinstance(c, dict) and c.get("source_chapter")), None)
         progress_percent = next((c.get("progress_percent") for c in included if isinstance(c, dict) and c.get("progress_percent") is not None), None)
-
-        for q in questions:
+        for q in p["accepted"]:
             q["source_pages"] = source_pages
             q["source_chunk_indices"] = chunk_indices
             q["model"] = LLM_MODEL
@@ -595,7 +689,7 @@ def generate_quiz(
                 q["source_chapter"] = source_chapter
             if progress_percent is not None:
                 q["progress_percent"] = progress_percent
-        all_questions.extend(questions)
+            all_questions.append(q)
 
     if not all_questions:
         raise RuntimeError(

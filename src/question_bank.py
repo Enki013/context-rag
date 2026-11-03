@@ -473,6 +473,7 @@ def _ensure_pool(
             num_questions=needed,
             difficulty=difficulty,
             randomize=True,
+            exclude_questions=_pool_questions(book_id, chapter_index, difficulty, db_path=db_path),
         )
         return save_questions_to_pool(
             book_id=book_id,
@@ -481,6 +482,24 @@ def _ensure_pool(
             difficulty=difficulty,
             db_path=db_path,
         )
+
+
+def _pool_questions(book_id: str, chapter_index: int, difficulty: str, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Bölüm havuzundaki tüm sorular (tekrar kontrolü için: soru, şıklar, doğru cevap)."""
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT question, options, correct_answer FROM question_bank "
+            "WHERE book_id = ? AND chapter_index = ? AND difficulty = ?",
+            (book_id, chapter_index, normalize_difficulty(difficulty)),
+        ).fetchall()
+    result = []
+    for r in rows:
+        try:
+            options = json.loads(r["options"])
+        except Exception:
+            options = []
+        result.append({"question": r["question"], "options": options, "correct_answer": r["correct_answer"]})
+    return result
 
 
 def _load_chapter_text(book_id: str, chapter_index: int, db_path: Optional[str] = None) -> str:
