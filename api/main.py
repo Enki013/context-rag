@@ -11,6 +11,7 @@ FastAPI tabanlı, Swagger UI ve CORS destekli ana uygulama dosyası.
 import logging
 import os
 import sys
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -18,12 +19,25 @@ from fastapi.responses import RedirectResponse
 # Kök dizini PYTHONPATH'e ekle
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from api.routes import books, health, quiz, quizzes
+from api.routes import admin, books, health, jobs, quiz, quizzes
+from src.jobs import start_worker, stop_worker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("api")
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Uygulama açılınca üretim worker'ını başlatır, kapanınca durdurur (JOB_WORKER_ENABLED=0 kapatır)."""
+    enabled = os.environ.get("JOB_WORKER_ENABLED", "1") != "0"
+    if enabled:
+        start_worker()
+    yield
+    if enabled:
+        stop_worker()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Context RAG - Mobile & Headless Quiz Engine API",
     description=(
         "Mobil ve web uygulamaları için RAG tabanlı kitap arama, EPUB/PDF işleme, "
@@ -54,6 +68,8 @@ app.include_router(health.router, prefix="/api/v1")
 app.include_router(books.router, prefix="/api/v1")
 app.include_router(quiz.router, prefix="/api/v1")       # Eski endpoint'ler (geriye dönük uyumluluk)
 app.include_router(quizzes.router, prefix="/api/v1")    # Yeni RESTful endpoint
+app.include_router(admin.router, prefix="/api/v1")      # Admin: metrikler
+app.include_router(jobs.router, prefix="/api/v1")       # Asenkron üretim işleri
 
 
 @app.get("/", include_in_schema=False)

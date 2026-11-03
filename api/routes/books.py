@@ -22,12 +22,13 @@ from api.schemas import (
     ChapterItem,
     EngineChapterItem,
 )
-from src.dataset_search import extract_chapters, get_book_chapters, search_books
+from src.dataset_search import detect_chapters, extract_chapters, get_book_chapters, search_books
 from src.epub_processor import extract_text_from_epub_bytes
 from src.pdf_processor import extract_text_from_bytes, get_full_text
 from src.question_bank import (
     get_book as get_engine_book,
     get_book_chapters as get_engine_chapters,
+    refresh_gutenberg_book,
     register_book_content,
 )
 
@@ -96,7 +97,8 @@ def get_book_detail(book_id: str):
             with open(os.path.join(BOOKS_DIR, f"{book_id}.txt"), "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
                 preview = content[:500] + ("..." if len(content) > 500 else "")
-                total_chaps = len(extract_chapters(content))
+                # Ağ isteği yapmadan: EPUB önbellekteyse içindekiler, değilse regex
+                total_chaps = len(detect_chapters(book_id, content, book_title=row[1] or "", allow_download=False))
         except Exception:
             pass
 
@@ -158,6 +160,7 @@ def import_book_endpoint(
     book_id: Optional[str] = Form(None, description="Özel kitap ID (boş bırakılırsa dosya adından üretilir)"),
     title: Optional[str] = Form(None, description="Kitap adı (boşsa dosyadan çıkarılır)"),
     author: Optional[str] = Form(None, description="Yazar adı"),
+    prepopulate: bool = Form(False, description="true ise her bölümün soru havuzu arka planda doldurulur (medium)"),
 ):
     """
     Mobil backend'in yeni bir kitabı (EPUB / PDF) bu quiz motoruna kaydetmesi için kullanılır.
@@ -242,6 +245,19 @@ def import_book_endpoint(
         total_pages=total_pages,
     )
 
+    queued_jobs = 0
+    if prepopulate:
+        from src.jobs import enqueue
+
+        for ch in chapters:
+            enqueue(
+                "populate",
+                {"book_id": assigned_book_id, "chapter_index": ch["chapter_index"], "difficulty": "medium",
+                 "target_count": 10},
+                dedup_key=f"populate:{assigned_book_id}:{ch['chapter_index']}:medium",
+            )
+            queued_jobs += 1
+
     db_chapters = get_engine_chapters(assigned_book_id)
     chapter_items = [
         EngineChapterItem(
@@ -264,6 +280,7 @@ def import_book_endpoint(
         total_chapters=len(chapter_items),
         total_pages=total_pages,
         chapters=chapter_items,
+        queued_jobs=queued_jobs,
     )
 
 
@@ -273,6 +290,8 @@ def get_book_chapters_endpoint(book_id: str):
     Belirtilen kitabın metnindeki tüm bölümleri ve her bölümün kitap içindeki ilerleme yüzdesini döndürür.
     Önce kalıcı soru bankası veritabanına bakar, yoksa Gutenberg kataloğundan çeker.
     """
+    # Eski yöntemle kaydedilmiş Gutenberg kitaplarını güncel bölüm tespitiyle eşitle
+    refresh_gutenberg_book(book_id)
     engine_chapters = get_engine_chapters(book_id)
     if engine_chapters:
         engine_book = get_engine_book(book_id) or {}

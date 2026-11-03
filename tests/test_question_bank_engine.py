@@ -94,6 +94,7 @@ def test_question_pooling_and_cache_hit(temp_db):
             "question": f"Soru {i}?",
             "options": ["A) Şık 1", "B) Şık 2", "C) Şık 3", "D) Şık 4"],
             "correct_answer": "A",
+            "evidence": "Metinden birebir alınmış kanıt cümlesi.",
             "explanation": f"Açıklama {i}",
             "source_pages": [i],
         }
@@ -149,12 +150,14 @@ def test_answer_evaluation_against_bank(temp_db):
             "question": "Başkent neresidir?",
             "options": ["A) Ankara", "B) İstanbul", "C) İzmir", "D) Bursa"],
             "correct_answer": "A",
+            "evidence": "Metinden birebir alınmış kanıt cümlesi.",
             "explanation": "Türkiye Cumhuriyeti'nin başkenti Ankara'dır.",
         },
         {
             "question": "Hangisi bir asal sayıdır?",
             "options": ["A) 4", "B) 6", "C) 7", "D) 9"],
             "correct_answer": "C",
+            "evidence": "Metinden birebir alınmış kanıt cümlesi.",
             "explanation": "7 bir asal sayıdır.",
         },
     ]
@@ -203,6 +206,7 @@ class TestAPIHeadlessEndpoints:
                     "question": f"Soru {i}?",
                     "options": ["A) 1", "B) 2", "C) 3", "D) 4"],
                     "correct_answer": "A",
+                    "evidence": "Metinden birebir alınmış kanıt cümlesi.",
                     "explanation": "Açıklama",
                 }
                 for i in range(5)
@@ -235,6 +239,7 @@ class TestAPIHeadlessEndpoints:
                 "question": "Soru 1?",
                 "options": ["A) Doğru", "B) Yanlış", "C) X", "D) Y"],
                 "correct_answer": "A",
+                "evidence": "Metinden birebir alınmış kanıt cümlesi.",
                 "explanation": "A doğru.",
             }],
             db_path=temp_db,

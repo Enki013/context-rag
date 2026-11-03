@@ -91,13 +91,17 @@ class ApiClient(
         }
     }
 
+    /**
+     * Bölüm quizini havuzdan ister. Havuz yetersizse sunucu 202 döner ve soruları arka planda
+     * hazırlar; bu durumda [ServeResult.Preparing] gelir ve [getJob] ile iş yoklanır.
+     */
     suspend fun serveQuiz(
         bookId: String,
         chapterIndex: Int = 1,
         count: Int = 5,
         difficulty: String = Difficulty.MEDIUM,
         hideAnswers: Boolean = true
-    ): Result<ServeQuizResponse> = withContext(ioDispatcher) {
+    ): Result<ServeResult> = withContext(ioDispatcher) {
         try {
             val url = "$baseUrl/api/v1/quiz/serve?book_id=${java.net.URLEncoder.encode(bookId, "UTF-8")}&chapter_index=$chapterIndex&count=$count&difficulty=$difficulty&hide_answers=$hideAnswers"
             val request = Request.Builder().url(url).get().build()
@@ -107,8 +111,28 @@ class ApiClient(
                     return@withContext Result.failure(IOException(extractErrorMessage(response)))
                 }
                 val body = response.body?.string() ?: ""
-                val data = gson.fromJson(body, ServeQuizResponse::class.java)
-                Result.success(data)
+                if (response.code == 202) {
+                    Result.success(ServeResult.Preparing(gson.fromJson(body, PreparingResponse::class.java)))
+                } else {
+                    Result.success(ServeResult.Ready(gson.fromJson(body, ServeQuizResponse::class.java)))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getJob(jobId: String): Result<JobStatus> = withContext(ioDispatcher) {
+        try {
+            val request = Request.Builder()
+                .url("$baseUrl/api/v1/jobs/${java.net.URLEncoder.encode(jobId, "UTF-8")}")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(IOException(extractErrorMessage(response)))
+                }
+                Result.success(gson.fromJson(response.body?.string() ?: "", JobStatus::class.java))
             }
         } catch (e: Exception) {
             Result.failure(e)

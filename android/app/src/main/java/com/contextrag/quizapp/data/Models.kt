@@ -75,6 +75,29 @@ data class ServedQuestion(
     val explanation: String? = null
 )
 
+/** Havuz yetersizken /quiz/serve'in 202 yanıtı: sorular arka planda hazırlanıyor. */
+data class PreparingResponse(
+    val status: String = "preparing",
+    @SerializedName("job_id") val jobId: String,
+    @SerializedName("poll_url") val pollUrl: String = "",
+    @SerializedName("retry_after_seconds") val retryAfterSeconds: Int = 15,
+    val message: String? = null
+)
+
+/** GET /api/v1/jobs/{id}: queued | running | completed | failed */
+data class JobStatus(
+    val id: String,
+    val kind: String = "",
+    val status: String,
+    @SerializedName("queue_position") val queuePosition: Int? = null,
+    val error: String? = null
+)
+
+sealed interface ServeResult {
+    data class Ready(val quiz: ServeQuizResponse) : ServeResult
+    data class Preparing(val info: PreparingResponse) : ServeResult
+}
+
 data class ServeQuizResponse(
     @SerializedName("book_id") val bookId: String,
     val title: String,

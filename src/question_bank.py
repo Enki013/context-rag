@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import config
 from config import QUIZ_ENGINE_DB_PATH
 from src.chunker import chunk_text
 from src.difficulty import normalize_difficulty
@@ -115,6 +116,50 @@ def _create_schema(db_path: Optional[str] = None):
             );
 
             CREATE INDEX IF NOT EXISTS idx_qb_lookup ON question_bank(book_id, chapter_index, difficulty);
+
+            -- Gözlemlenebilirlik: her üretim çalışmasının istatistikleri ve elenen sorular
+            CREATE TABLE IF NOT EXISTS generation_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                source TEXT,
+                book_id TEXT,
+                chapter_index INTEGER,
+                difficulty TEXT,
+                model TEXT,
+                verify_model TEXT,
+                prompt_version TEXT,
+                requested INTEGER,
+                accepted INTEGER,
+                total_seconds REAL,
+                stats TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS rejected_questions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER REFERENCES generation_runs(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                stage TEXT NOT NULL,
+                reason TEXT,
+                question TEXT,
+                context TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_rejected_stage ON rejected_questions(stage, reason);
+
+            -- Asenkron üretim işleri (tek worker sırayla işler)
+            CREATE TABLE IF NOT EXISTS generation_jobs (
+                id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL,
+                params TEXT NOT NULL,
+                dedup_key TEXT,
+                status TEXT NOT NULL DEFAULT 'queued',
+                result TEXT,
+                error TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                started_at TIMESTAMP,
+                finished_at TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_jobs_queue ON generation_jobs(status, created_at);
+            CREATE INDEX IF NOT EXISTS idx_jobs_dedup ON generation_jobs(dedup_key, status);
             """
         )
         # Eski veritabanları için geriye uyumlu şema göçü
@@ -123,6 +168,8 @@ def _create_schema(db_path: Optional[str] = None):
             "prompt_version": "TEXT",
             "source_chunk_indices": "TEXT",
             "evidence": "TEXT",
+            # 1: sunulmaz (yeniden doğrulamada elendi). Silinmez; eski istemcilerin cevap değerlendirmesi bozulmasın.
+            "retired": "INTEGER DEFAULT 0",
         })
         # Zorluk değerleri İngilizceye taşındı (kolay/orta/zor -> easy/medium/hard)
         cur.execute(
@@ -249,10 +296,10 @@ def get_book_chapters(book_id: str, db_path: Optional[str] = None) -> List[Dict[
     init_question_bank_db(db_path)
     with _get_connection(db_path) as conn:
         rows = conn.execute(
-            """
-            SELECT c.*, 
-                   (SELECT COUNT(*) FROM question_bank q 
-                    WHERE q.book_id = c.book_id AND q.chapter_index = c.chapter_index) as pool_count
+            f"""
+            SELECT c.*,
+                   (SELECT COUNT(*) FROM question_bank q
+                    WHERE q.book_id = c.book_id AND q.chapter_index = c.chapter_index{_servable_filter()}) as pool_count
             FROM chapters c
             WHERE c.book_id = ?
             ORDER BY c.chapter_index ASC
@@ -284,25 +331,29 @@ def get_chapter(book_id: str, chapter_index: int, db_path: Optional[str] = None)
 # ─── Soru Havuzu (Question Pool) Yönetimi ───────────────────────────────────
 
 
+def _servable_filter() -> str:
+    """Sunulabilir sorular: emekli değil; doğrulama açıksa kanıtı olan (doğrulanmış)."""
+    clause = " AND COALESCE(retired, 0) = 0"
+    if config.VERIFY_ANSWERS:
+        clause += " AND evidence IS NOT NULL"
+    return clause
+
+
 def count_pool_questions(
     book_id: str,
     chapter_index: int,
     difficulty: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> int:
-    """Belirli bir bölümün havuzundaki soru adedini döner."""
+    """Belirli bir bölümün havuzundaki sunulabilir soru adedini döner."""
     init_question_bank_db(db_path)
     with _get_connection(db_path) as conn:
+        query = "SELECT COUNT(*) as cnt FROM question_bank WHERE book_id = ? AND chapter_index = ?" + _servable_filter()
+        params: list = [book_id, chapter_index]
         if difficulty:
-            row = conn.execute(
-                "SELECT COUNT(*) as cnt FROM question_bank WHERE book_id = ? AND chapter_index = ? AND difficulty = ?",
-                (book_id, chapter_index, normalize_difficulty(difficulty)),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT COUNT(*) as cnt FROM question_bank WHERE book_id = ? AND chapter_index = ?",
-                (book_id, chapter_index),
-            ).fetchone()
+            query += " AND difficulty = ?"
+            params.append(normalize_difficulty(difficulty))
+        row = conn.execute(query, params).fetchone()
         return row["cnt"] if row else 0
 
 
@@ -359,10 +410,10 @@ def get_cached_questions(
     difficulty: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Havuzdan rastgele soru çeker."""
+    """Havuzdan rastgele (sunulabilir) soru çeker."""
     init_question_bank_db(db_path)
     with _get_connection(db_path) as conn:
-        query = "SELECT * FROM question_bank WHERE book_id = ? AND chapter_index = ?"
+        query = "SELECT * FROM question_bank WHERE book_id = ? AND chapter_index = ?" + _servable_filter()
         params = [book_id, chapter_index]
         if difficulty:
             query += " AND difficulty = ?"
@@ -429,6 +480,25 @@ def serve_chapter_quiz(
     return _format_served_quiz(book_id, chapter_index, difficulty, cache_hit, selected_questions, hide_answers, db_path)
 
 
+def get_pool_quiz(
+    book_id: str,
+    chapter_index: int,
+    count: int = 5,
+    difficulty: str = "medium",
+    hide_answers: bool = True,
+    db_path: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Havuzda yeterli soru varsa quiz'i döner (LLM çağrısı yapmaz), yoksa None.
+    API bu fonksiyonu kullanır; eksik havuz arka planda bir işle doldurulur.
+    """
+    difficulty = normalize_difficulty(difficulty)
+    if count_pool_questions(book_id, chapter_index, difficulty=difficulty, db_path=db_path) < count:
+        return None
+    selected = get_cached_questions(book_id, chapter_index, count=count, difficulty=difficulty, db_path=db_path)
+    return _format_served_quiz(book_id, chapter_index, difficulty, True, selected, hide_answers, db_path)
+
+
 def populate_chapter_pool(
     book_id: str,
     chapter_index: int,
@@ -468,13 +538,20 @@ def _ensure_pool(
         logger.info(
             f"Havuz yetersiz ({pool_count}/{target_count}). LLM ile {needed} soru üretiliyor..."
         )
-        new_questions = generate_quiz(
-            chunks,
-            num_questions=needed,
-            difficulty=difficulty,
-            randomize=True,
-            exclude_questions=_pool_questions(book_id, chapter_index, difficulty, db_path=db_path),
-        )
+        from src.metrics import record_generation_run
+
+        stats: Dict[str, Any] = {}
+        try:
+            new_questions = generate_quiz(
+                chunks,
+                num_questions=needed,
+                difficulty=difficulty,
+                randomize=True,
+                exclude_questions=_pool_questions(book_id, chapter_index, difficulty, db_path=db_path),
+                stats=stats,
+            )
+        finally:
+            record_generation_run(stats, "pool", book_id, chapter_index, db_path=db_path)
         return save_questions_to_pool(
             book_id=book_id,
             chapter_index=chapter_index,
@@ -489,7 +566,7 @@ def _pool_questions(book_id: str, chapter_index: int, difficulty: str, db_path: 
     with _get_connection(db_path) as conn:
         rows = conn.execute(
             "SELECT question, options, correct_answer FROM question_bank "
-            "WHERE book_id = ? AND chapter_index = ? AND difficulty = ?",
+            "WHERE book_id = ? AND chapter_index = ? AND difficulty = ? AND COALESCE(retired, 0) = 0",
             (book_id, chapter_index, normalize_difficulty(difficulty)),
         ).fetchall()
     result = []
@@ -502,54 +579,160 @@ def _pool_questions(book_id: str, chapter_index: int, difficulty: str, db_path: 
     return result
 
 
+REVERIFY_TOP_K = 4  # yeniden doğrulamada soru başına bulunan en ilgili chunk sayısı
+
+
+def reverify_pool(
+    book_id: Optional[str] = None,
+    chapter_index: Optional[int] = None,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Kanıtı olmayan (doğrulama eklenmeden önce üretilmiş) havuz sorularını doğrular.
+    Bu sorularda hangi metin parçasından üretildikleri kayıtlı olmadığı için, her soru için bölüm
+    metninin en ilgili REVERIFY_TOP_K chunk'ı bge-m3 benzerliğiyle bulunur (retrieval) ve
+    doğrulayıcıya bağlam olarak verilir. Geçenlere kanıt yazılır; geçemeyenler emekliye ayrılır.
+    """
+    import time
+
+    import numpy as np
+
+    from src.embedder import _get_embeddings_batch
+    from src.metrics import record_generation_run
+    from src.quiz_generator import LLM_MODEL, VERIFY_MODEL, _build_context, _dedup_text, _verify_questions
+
+    init_question_bank_db(db_path)
+    query = ("SELECT id, book_id, chapter_index, question, options, correct_answer, explanation FROM question_bank "
+             "WHERE evidence IS NULL AND COALESCE(retired, 0) = 0")
+    params: list = []
+    if book_id:
+        query += " AND book_id = ?"
+        params.append(book_id)
+    if chapter_index is not None:
+        query += " AND chapter_index = ?"
+        params.append(chapter_index)
+    with _get_connection(db_path) as conn:
+        rows = [dict(r) for r in conn.execute(query + " ORDER BY book_id, chapter_index, id", params)]
+
+    by_chapter: Dict[tuple, List[Dict[str, Any]]] = {}
+    for r in rows:
+        r["options"] = json.loads(r["options"] or "[]")
+        by_chapter.setdefault((r["book_id"], r["chapter_index"]), []).append(r)
+
+    summary = {"checked": 0, "verified": 0, "retired": 0, "skipped_chapters": []}
+    t_start = time.perf_counter()
+    rejects: list = []
+    for (b_id, ch_idx), questions in by_chapter.items():
+        try:
+            chunks = chunk_text(_load_chapter_text(b_id, ch_idx, db_path=db_path))
+            chunk_vecs = np.asarray(_get_embeddings_batch([c["text"] for c in chunks]), dtype=float)
+            q_vecs = np.asarray(_get_embeddings_batch([_dedup_text(q) for q in questions]), dtype=float)
+        except Exception as e:
+            logger.warning(f"Yeniden doğrulama atlandı ({b_id}, bölüm {ch_idx}): {e}")
+            summary["skipped_chapters"].append({"book_id": b_id, "chapter_index": ch_idx, "error": str(e)})
+            continue
+        chunk_vecs /= np.clip(np.linalg.norm(chunk_vecs, axis=1, keepdims=True), 1e-12, None)
+        q_vecs /= np.clip(np.linalg.norm(q_vecs, axis=1, keepdims=True), 1e-12, None)
+
+        for q, q_vec in zip(questions, q_vecs):
+            summary["checked"] += 1
+            top = sorted(np.argsort(chunk_vecs @ q_vec)[::-1][:REVERIFY_TOP_K])
+            context, _ = _build_context([chunks[i] for i in top])
+            candidate = {k: q[k] for k in ("question", "options", "correct_answer", "explanation")}
+            verified = _verify_questions([candidate], context, rejects=rejects)
+            with _get_connection(db_path) as conn:
+                if verified:
+                    conn.execute("UPDATE question_bank SET evidence = ? WHERE id = ?",
+                                 (verified[0]["evidence"], q["id"]))
+                    summary["verified"] += 1
+                else:
+                    conn.execute("UPDATE question_bank SET retired = 1 WHERE id = ?", (q["id"],))
+                    summary["retired"] += 1
+                conn.commit()
+
+    record_generation_run({
+        "requested": summary["checked"], "generated": summary["checked"], "accepted": summary["verified"],
+        "returned": summary["verified"], "verify_rejected": summary["retired"], "llm_calls": summary["checked"],
+        "seconds": {"verify": round(time.perf_counter() - t_start, 2), "total": round(time.perf_counter() - t_start, 2)},
+        "model": LLM_MODEL, "verify_model": VERIFY_MODEL, "rejected": rejects,
+    }, "reverify", book_id, chapter_index, db_path=db_path)
+    logger.info(f"Yeniden doğrulama: {summary}")
+    return summary
+
+
+def _register_gutenberg_book(book_id: str, db_path: Optional[str] = None) -> bool:
+    """Gutenberg kitabının bölümlerini (EPUB içindekiler / regex) ve katalog başlığını kaydeder."""
+    from src.dataset_search import get_book_chapters as get_gutenberg_chapters
+
+    info = get_gutenberg_chapters(str(book_id).strip("'\""))
+    chapters = info.get("chapters", [])
+    if not chapters:
+        return False
+    register_book_content(
+        book_id=book_id,
+        title=info.get("title") or f"Kitap #{book_id}",
+        author=info.get("author") or "",
+        source_format="gutenberg",
+        chapters=chapters,
+        db_path=db_path,
+    )
+    return True
+
+
+_refreshed_books: set = set()
+
+
+def refresh_gutenberg_book(book_id: str, db_path: Optional[str] = None) -> bool:
+    """
+    Daha önce kaydedilmiş bir Gutenberg kitabının bölümlerini güncel tespitle karşılaştırır
+    (süreç başına kitap başına bir kez). Bölüm başlıkları farklıysa veya kitap adı geçiciyse
+    ("Kitap #36") yeniden kaydeder; register_book_content metni değişen bölümlerin eski sorularını
+    siler (artık yanlış bölüme ait olurlardı). Yenilendiyse True döner.
+    """
+    key = (os.path.abspath(db_path or QUIZ_ENGINE_DB_PATH), book_id)
+    if key in _refreshed_books:
+        return False
+    _refreshed_books.add(key)
+
+    book = get_book(book_id, db_path=db_path)
+    if not book or book.get("source_format") != "gutenberg":
+        return False
+    from src.dataset_search import get_book_chapters as get_gutenberg_chapters
+
+    try:
+        info = get_gutenberg_chapters(str(book_id))
+    except Exception as e:
+        logger.warning(f"Gutenberg bölümleri yenilenemedi ({book_id}): {e}")
+        return False
+    new_titles = [c["title"] for c in info.get("chapters", [])]
+    old_titles = [c["title"] for c in get_book_chapters(book_id, db_path=db_path)]
+    placeholder_title = str(book.get("title", "")).startswith("Kitap #")
+    if not new_titles or (new_titles == old_titles and not placeholder_title):
+        return False
+
+    logger.info(f"Gutenberg bölümleri güncelleniyor ({book_id}): {len(old_titles)} -> {len(new_titles)} bölüm")
+    register_book_content(
+        book_id=book_id,
+        title=info.get("title") or book.get("title"),
+        author=info.get("author") or book.get("author"),
+        source_format="gutenberg",
+        chapters=info["chapters"],
+        db_path=db_path,
+    )
+    return True
+
+
 def _load_chapter_text(book_id: str, chapter_index: int, db_path: Optional[str] = None) -> str:
-    """Bölüm metnini veritabanından okur; yoksa yerel dosyadan veya Gutenberg'den çıkarıp kaydeder."""
+    """Bölüm metnini veritabanından okur; yoksa Gutenberg metninden (önce yerel önbellek) çıkarıp kaydeder."""
     ch = get_chapter(book_id, chapter_index, db_path=db_path)
     if ch and (ch.get("raw_text") or "").strip():
         return ch["raw_text"]
 
-    from config import BOOKS_DIR
-    clean_id = str(book_id).strip("'\"")
-
-    # 1. Öncelik: data/books/{clean_id}.txt yerel dosyasından oku
-    local_path = os.path.join(BOOKS_DIR, f"{clean_id}.txt")
-    if os.path.isfile(local_path) and os.path.getsize(local_path) > 100:
-        try:
-            with open(local_path, "r", encoding="utf-8", errors="ignore") as f:
-                full_text = f.read()
-            from src.dataset_search import extract_chapters
-            extracted = extract_chapters(full_text)
-            if extracted:
-                register_book_content(
-                    book_id=book_id,
-                    title=f"Kitap #{clean_id}",
-                    author="Bilinmiyor",
-                    source_format="gutenberg",
-                    chapters=extracted,
-                    db_path=db_path,
-                )
-                ch = get_chapter(book_id, chapter_index, db_path=db_path)
-        except Exception as e:
-            logger.warning(f"Yerel metinden bölüm çıkarma hatası ({clean_id}): {e}")
-
-    # 2. Öncelik: Gutenberg kataloğundan indir
-    if not ch or not (ch.get("raw_text") or "").strip():
-        from src.dataset_search import get_book_chapters as get_gutenberg_chapters
-        try:
-            g_info = get_gutenberg_chapters(clean_id)
-            g_chapters = g_info.get("chapters", [])
-            if g_chapters:
-                register_book_content(
-                    book_id=book_id,
-                    title=g_info.get("title", f"Kitap #{clean_id}"),
-                    author=g_info.get("author", ""),
-                    source_format="gutenberg",
-                    chapters=g_chapters,
-                    db_path=db_path,
-                )
-                ch = get_chapter(book_id, chapter_index, db_path=db_path)
-        except Exception as e:
-            logger.warning(f"Gutenberg fallback hatası ({clean_id}): {e}")
+    try:
+        if _register_gutenberg_book(book_id, db_path=db_path):
+            ch = get_chapter(book_id, chapter_index, db_path=db_path)
+    except Exception as e:
+        logger.warning(f"Gutenberg bölümleri yüklenemedi ({book_id}): {e}")
 
     if not ch or not (ch.get("raw_text") or "").strip():
         raise ValueError(f"Bölüm metni bulunamadı: Kitap {book_id}, Bölüm {chapter_index}")

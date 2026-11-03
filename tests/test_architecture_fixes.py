@@ -8,6 +8,7 @@ Mimari incelemede bulunan kritik hataların regresyon testleri:
 
 import os
 import random
+import re
 from collections import Counter
 from unittest.mock import patch
 
@@ -50,6 +51,7 @@ def _q(i=0, correct="A"):
         "options": ["A) Ankara", "B) İstanbul", "C) İzmir", "D) Bursa"],
         "correct_answer": correct,
         "explanation": "Metinde açıkça belirtilmiştir.",
+        "evidence": "Metinden birebir alınmış kanıt cümlesi.",
     }
 
 
@@ -233,10 +235,15 @@ def test_populate_endpoint_with_admin_key(temp_db):
             "/api/v1/quiz/populate?book_id=api_sec&chapter_index=1&target_count=5",
             headers={"X-Admin-Key": "k"},
         )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["generated"] == 2
-    assert body["total_pool_size"] == 5
+        assert resp.status_code == 202
+        job = resp.json()
+        assert job["kind"] == "populate" and job["status"] == "queued"
+
+        from src.jobs import run_pending
+        assert run_pending() == 1
+        done = client.get(job["poll_url"]).json()
+    assert done["status"] == "completed"
+    assert done["result"] == {"generated": 2, "total_pool_size": 5}
 
 
 # ─── Eski havuzu dengeleme scripti ──────────────────────────────────────────
@@ -328,12 +335,12 @@ def test_generation_runs_in_phases_and_retries_short_groups():
     events = []
     counter = {"n": 0}
 
-    def fake_llm(context, count, language, difficulty="medium"):
+    def fake_llm(context, count, language, difficulty="medium", rejects=None):
         counter["n"] += 1
         events.append("gen")
         return [dict(_photo_q(), question=f"Soru {counter['n']}-{i} nedir acaba?") for i in range(count)]
 
-    def fake_verify(questions, context):
+    def fake_verify(questions, context, rejects=None):
         events.append("ver")
         return questions[:1]  # her grupta tur başına yalnızca bir soru geçiyor
 
@@ -527,7 +534,9 @@ def test_openapi_lists_only_english_difficulties():
     serve_params = schema["paths"]["/api/v1/quiz/serve"]["get"]["parameters"]
     diff = next(p for p in serve_params if p["name"] == "difficulty")
     assert diff["schema"]["default"] == "medium"
-    assert "orta" not in str(schema) and "kolay" not in str(schema)
+    import json as _json
+    dumped = _json.dumps(schema, ensure_ascii=False)
+    assert '"orta"' not in dumped and '"kolay"' not in dumped and '"zor"' not in dumped
 
 
 def test_serve_accepts_english_and_legacy_difficulty(temp_db):
@@ -589,3 +598,321 @@ def test_dedup_catches_same_question_with_conflicting_answer(monkeypatch):
     with patch("src.quiz_generator._get_embeddings_batch", side_effect=fake_embed):
         kept = _deduplicate([first, second])
     assert [q["question"] for q in kept] == [first["question"]]
+
+
+# ─── Asenkron üretim işleri ─────────────────────────────────────────────────
+
+
+def test_serve_enqueues_job_when_pool_is_short_and_serves_after(temp_db):
+    from src.jobs import run_pending
+
+    register_book_content(
+        book_id="async_book", title="T", author="A", source_format="epub",
+        chapters=[{"chapter_index": 1, "title": "B1", "raw_text": "Bölüm metni " * 80}], db_path=temp_db,
+    )
+    url = "/api/v1/quiz/serve?book_id=async_book&chapter_index=1&count=3"
+    with patch("src.question_bank.QUIZ_ENGINE_DB_PATH", temp_db), \
+            patch("src.question_bank.generate_quiz", side_effect=lambda chunks, num_questions, **kw:
+                  [dict(_q(100 + i), evidence="kanıt") for i in range(num_questions)]) as gen:
+        first = client.get(url)
+        second = client.get(url)  # aynı bölüm için ikinci istek aynı işe bağlanmalı
+        assert first.status_code == 202 and first.headers["Retry-After"]
+        assert first.json()["job_id"] == second.json()["job_id"]
+        assert gen.call_count == 0  # istek sırasında LLM çağrılmadı
+
+        assert run_pending() == 1
+        job = client.get(first.json()["poll_url"]).json()
+        assert job["status"] == "completed" and job["result"]["total_pool_size"] == 10
+        served = client.get(url)
+    assert served.status_code == 200 and served.json()["cache_hit"] is True
+    assert len(served.json()["questions"]) == 3
+
+
+def test_quizzes_endpoint_is_async(temp_db):
+    from src.jobs import run_pending
+
+    fake_chunks = [{"index": i, "text": f"Metin {i} " * 40, "source_pages": [], "source_chapter": "B1",
+                    "progress_percent": 0.0} for i in range(3)]
+    with patch("src.question_bank.QUIZ_ENGINE_DB_PATH", temp_db), \
+            patch("src.dataset_search.get_chunks_for_book", return_value=fake_chunks), \
+            patch("src.quiz_generator.generate_quiz", return_value=[_q(1), _q(2)]):
+        created = client.post("/api/v1/quizzes", json={"source": {"type": "book", "book_id": "1661"},
+                                                       "question_count": 2})
+        assert created.status_code == 202
+        body = created.json()
+        assert body["id"].startswith("quiz_") and body["status"] == "queued"
+        assert client.get(body["poll_url"]).status_code == 202
+
+        run_pending()
+        done = client.get(body["poll_url"])
+    assert done.status_code == 200
+    quiz = done.json()
+    assert quiz["status"] == "completed" and quiz["question_count"] == 2
+    assert quiz["questions"][0]["correct_answer"] in "ABCD"
+
+
+def test_failed_job_reports_error_and_interrupted_jobs_are_requeued(temp_db):
+    from src import jobs
+
+    with patch("src.question_bank.QUIZ_ENGINE_DB_PATH", temp_db):
+        job = jobs.enqueue("populate", {"book_id": "missing", "chapter_index": 1})
+        jobs.run_pending()
+        failed = jobs.get_job(job["id"])
+        assert failed["status"] == "failed" and "Bölüm metni bulunamadı" in failed["error"]
+
+        stuck = jobs.enqueue("populate", {"book_id": "x", "chapter_index": 2})
+        jobs._claim_next()  # süreç bu iş çalışırken çöktü
+        assert jobs.get_job(stuck["id"])["status"] == "running"
+        assert jobs.requeue_interrupted() == 1
+        assert jobs.get_job(stuck["id"])["status"] == "queued"
+
+
+def test_background_worker_processes_queue(temp_db):
+    import time as _time
+    from src import jobs
+
+    with patch("src.question_bank.QUIZ_ENGINE_DB_PATH", temp_db), \
+            patch("src.jobs.HANDLERS", {**jobs.HANDLERS, "populate": lambda params, db: {"ok": params["chapter_index"]}}):
+        worker = jobs.JobWorker(idle_seconds=0.05)
+        worker.start()
+        try:
+            job = jobs.enqueue("populate", {"book_id": "b", "chapter_index": 7})
+            worker.notify()
+            for _ in range(100):
+                if jobs.get_job(job["id"])["status"] == "completed":
+                    break
+                _time.sleep(0.02)
+        finally:
+            worker.stop()
+        assert jobs.get_job(job["id"])["result"] == {"ok": 7}
+
+
+def test_generation_runs_are_recorded_with_rejections(temp_db):
+    from src.metrics import list_rejected, record_generation_run, summarize_runs
+
+    stats = {"requested": 5, "returned": 2, "accepted": 2, "generated": 6, "llm_calls": 2,
+             "structural_rejected": 1, "verify_rejected": 2, "dedup_rejected": 1,
+             "seconds": {"generate": 10.0, "verify": 8.0, "dedup": 0.5, "total": 19.0},
+             "rejected": [{"stage": "verify", "reason": "no_supported_answer:NONE", "question": _q(1), "context": "ctx"},
+                          {"stage": "dedup", "reason": "exact_duplicate", "question": _q(2), "context": None}]}
+    run_id = record_generation_run(stats, "pool", "b1", 1, db_path=temp_db)
+    assert run_id
+    summary = summarize_runs(db_path=temp_db)
+    assert summary["runs"] == 1 and summary["totals"]["generated"] == 6
+    assert summary["rates_of_generated"]["verify_rejected"] == round(2 / 6, 3)
+    assert summary["top_reject_reasons"] == {"verify:no_supported_answer": 1, "dedup:exact_duplicate": 1}
+    rejected = list_rejected(stage="verify", db_path=temp_db)
+    assert rejected[0]["context"] == "ctx" and rejected[0]["question"]["question"] == _q(1)["question"]
+
+
+def test_generate_quiz_fills_stats_with_stage_counts():
+    chunks = _indexed_chunks(5)
+    bad = {"question": "x", "options": ["A) a"], "correct_answer": "A", "explanation": "e"}
+
+    def fake_llm(context, count, language, difficulty="medium", rejects=None):
+        rejects.append({"stage": "structural", "reason": "wrong_option_count", "question": bad, "context": context})
+        return [_q(1), _q(2)]
+
+    def fake_verify(questions, context, rejects=None):
+        rejects.append({"stage": "verify", "reason": "evidence_not_found", "question": questions[1], "context": context})
+        return questions[:1]
+
+    stats = {}
+    with patch("src.quiz_generator._call_llm", side_effect=fake_llm), \
+            patch("src.quiz_generator._verify_questions", side_effect=fake_verify), \
+            patch("src.quiz_generator.VERIFY_ANSWERS", True), patch("src.quiz_generator.MAX_GROUP_ATTEMPTS", 1):
+        generate_quiz(chunks, num_questions=2, stats=stats)
+    assert stats["llm_calls"] == 1 and stats["generated"] == 3
+    assert stats["structural_rejected"] == 1 and stats["verify_rejected"] == 1 and stats["accepted"] == 1
+    assert set(stats["seconds"]) == {"generate", "verify", "dedup", "total"}
+
+
+# ─── Doğrulanmamış soruların ayıklanması ve yeniden doğrulama ───────────────
+
+
+def _unverified(i, text="Soru"):
+    q = dict(_q(i), question=f"{text} {i} nedir acaba?")
+    q.pop("evidence")
+    return q
+
+
+def test_unverified_and_retired_questions_are_not_served(temp_db):
+    import sqlite3
+
+    _register(temp_db, ["bir"])
+    save_questions_to_pool("b1", 1, [_q(1), _unverified(2)], db_path=temp_db)
+    assert count_pool_questions("b1", 1, db_path=temp_db) == 1
+    with patch.object(config, "VERIFY_ANSWERS", False):  # doğrulama kapalıysa eski sorular da sunulur
+        assert count_pool_questions("b1", 1, db_path=temp_db) == 2
+    with sqlite3.connect(temp_db) as conn:
+        conn.execute("UPDATE question_bank SET retired = 1 WHERE evidence IS NOT NULL")
+    assert count_pool_questions("b1", 1, db_path=temp_db) == 0
+    assert get_cached_questions("b1", 1, count=5, db_path=temp_db) == []
+
+
+def test_reverify_uses_retrieved_context_and_retires_failures(temp_db):
+    import sqlite3
+    from src.question_bank import reverify_pool
+
+    chapter = "\n\n".join([f"Paragraf {i}. " + ("dolgu " * 150) for i in range(8)])
+    _register(temp_db, [chapter])
+    save_questions_to_pool("b1", 1, [_unverified(1, "Geçecek"), _unverified(2, "Kalacak")], db_path=temp_db)
+    seen_contexts = []
+
+    def fake_embed(texts):
+        # chunk'lar: kendi paragraf numarası yönünde; sorular: hep "Paragraf 5" chunk'ına benzer
+        vecs = []
+        for t in texts:
+            v = [0.0] * 10
+            m = re.search(r"Paragraf (\d)", t)
+            v[int(m.group(1)) if m else 5] = 1.0
+            vecs.append(v)
+        return vecs
+
+    def fake_verify(questions, context, rejects=None):
+        seen_contexts.append(context)
+        q = questions[0]
+        if q["question"].startswith("Geçecek"):
+            return [dict(q, evidence="Paragraf 5")]
+        rejects.append({"stage": "verify", "reason": "no_supported_answer:NONE", "question": q, "context": context})
+        return []
+
+    with patch("src.embedder._get_embeddings_batch", side_effect=fake_embed), \
+            patch("src.quiz_generator._verify_questions", side_effect=fake_verify):
+        summary = reverify_pool(db_path=temp_db)
+
+    assert summary == {"checked": 2, "verified": 1, "retired": 1, "skipped_chapters": []}
+    assert all("Paragraf 5" in c for c in seen_contexts)  # en ilgili parça bağlama girdi
+    with sqlite3.connect(temp_db) as conn:
+        rows = dict(conn.execute("SELECT substr(question, 1, 7), COALESCE(evidence, '') || '|' || retired FROM question_bank"))
+    assert rows == {"Geçecek": "Paragraf 5|0", "Kalacak": "|1"}
+    assert count_pool_questions("b1", 1, db_path=temp_db) == 1
+
+
+def test_reverify_skips_chapters_without_text(temp_db):
+    from src.question_bank import reverify_pool
+
+    register_book_content(book_id="ghost", title="T", author="A", source_format="epub",
+                          chapters=[{"chapter_index": 1, "title": "B1", "raw_text": "bir"}], db_path=temp_db)
+    save_questions_to_pool("ghost", 3, [_unverified(1)], db_path=temp_db)
+    with patch("src.question_bank._load_chapter_text", side_effect=ValueError("Bölüm metni bulunamadı")):
+        summary = reverify_pool(book_id="ghost", db_path=temp_db)
+    assert summary["checked"] == 0 and summary["skipped_chapters"][0]["book_id"] == "ghost"
+
+
+def test_reverify_endpoint_enqueues_job(temp_db):
+    with patch("src.question_bank.QUIZ_ENGINE_DB_PATH", temp_db), patch.object(config, "ADMIN_API_KEY", "k"):
+        assert client.post("/api/v1/quiz/reverify").status_code == 403
+        resp = client.post("/api/v1/quiz/reverify?book_id=1661", headers={"X-Admin-Key": "k"})
+    assert resp.status_code == 202
+    assert resp.json()["kind"] == "reverify" and resp.json()["params"] == {"book_id": "1661", "chapter_index": None}
+
+
+# ─── EPUB içindekilerle bölüm tespiti ───────────────────────────────────────
+
+
+def test_heading_core_handles_captions_and_missing_space():
+    from src.dataset_search import _heading_core
+
+    assert _heading_core("I hope Mr. Bingley will like it. CHAPTER II.") == "CHAPTER II."
+    assert _heading_core("“On the Stairs.” CHAPTERXXVII.") == "CHAPTER XXVII."
+    assert _heading_core("I. A SCANDAL IN BOHEMIA") == "I. A SCANDAL IN BOHEMIA"
+
+
+def _book_text(n_chapters, para=900):
+    contents = "Contents\n\n" + "\n".join(f"CHAPTER {i}" for i in range(1, n_chapters + 1)) + "\n\n"
+    body = "".join(f"\n\nCHAPTER {i}\n\n" + (f"Story of part {i}. " * (para // 18)) for i in range(1, n_chapters + 1))
+    return contents + body
+
+
+def test_locate_titles_skips_contents_block_and_ignores_far_decoy():
+    from src.dataset_search import _locate_titles
+
+    text = _book_text(6) + "\n\nAfterword mentions The Book Title again."
+    titles = ["The Book Title"] + [f"CHAPTER {i}" for i in range(1, 7)]
+    located = _locate_titles(text, titles)
+    names = [t for _, t in located]
+    assert names == [f"CHAPTER {i}" for i in range(1, 7)]  # sondaki sahte eşleşme bölümleri yutmadı
+    contents_end = text.index("\n\n\n")
+    assert all(pos > contents_end for pos, _ in located)  # içindekiler listesindeki geçişler atlandı
+
+
+def test_chapters_from_epub_toc_merges_container_headings(tmp_path):
+    from src.dataset_search import chapters_from_epub_toc
+
+    text = _book_text(4).replace("\n\nCHAPTER 3\n", "\n\nPART TWO\n\nCHAPTER 3\n")
+    toc = {1: ["Contents", "CHAPTER 1", "CHAPTER 2", "PART TWO", "CHAPTER 3", "CHAPTER 4"]}
+    with patch("src.dataset_search._toc_levels", return_value={1: [t for t in toc[1] if t != "Contents"]}):
+        chapters = chapters_from_epub_toc(text, str(tmp_path / "x.epub"))
+    assert [c["title"] for c in chapters] == ["CHAPTER 1", "CHAPTER 2", "CHAPTER 3", "CHAPTER 4"]
+    assert all(c["detection"] == "epub_toc" for c in chapters)
+    assert chapters[2]["text"].startswith("CHAPTER 3")
+    assert text[chapters[1]["start_char"]:chapters[1]["end_char"]] == chapters[1]["text"]
+
+
+def test_detect_chapters_prefers_method_with_more_real_chapters(tmp_path):
+    from src.dataset_search import detect_chapters
+
+    epub = tmp_path / "1.epub"
+    epub.write_bytes(b"PK" + b"0" * 2000)
+    no_headings = "Just prose without any headings. " * 2000
+    two_toc = [{"chapter_index": 1, "title": "A", "detection": "epub_toc"},
+               {"chapter_index": 2, "title": "B", "detection": "epub_toc"}]
+
+    with patch("src.dataset_search.download_book_epub", return_value=str(epub)), \
+            patch("src.dataset_search.chapters_from_epub_toc", return_value=two_toc):
+        # regex yalnızca "4 eşit parça" yedeğine düşüyorsa EPUB kazanır
+        assert [c["title"] for c in detect_chapters("1", no_headings)] == ["A", "B"]
+        # regex daha çok gerçek bölüm bulduysa regex kazanır
+        assert len(detect_chapters("1", _book_text(5))) == 5
+    with patch("src.dataset_search.download_book_epub", return_value=None):
+        fallback = detect_chapters("1", no_headings)
+    assert len(fallback) == 4 and fallback[0]["detection"] == "regex_fallback"
+
+
+# ─── Eski kayıtlı Gutenberg kitaplarının bölümlerini yenileme ────────────────
+
+
+def _gutenberg_info(titles, title="The War of the Worlds"):
+    return {"book_id": "36", "title": title, "author": "Wells, H. G.",
+            "chapters": [{"chapter_index": i + 1, "title": t, "raw_text": f"{t} metni " * 50,
+                          "progress_percent": i * 10.0} for i, t in enumerate(titles)]}
+
+
+def test_refresh_gutenberg_book_replaces_stale_chapters_and_title(temp_db):
+    from src import question_bank as qb
+
+    register_book_content(
+        book_id="36", title="Kitap #36", author="Bilinmiyor", source_format="gutenberg",
+        chapters=[{"chapter_index": i, "title": f"Bölüm {i} (%{(i - 1) * 25})", "raw_text": f"eski {i}"}
+                  for i in range(1, 5)],
+        db_path=temp_db,
+    )
+    save_questions_to_pool("36", 1, [_q(1)], db_path=temp_db)
+    qb._refreshed_books.clear()
+    new_titles = [f"{r}. CHAPTER" for r in ("I", "II", "III", "IV", "V", "VI")]
+    with patch("src.dataset_search.get_book_chapters", return_value=_gutenberg_info(new_titles)):
+        assert qb.refresh_gutenberg_book("36", db_path=temp_db) is True
+        assert qb.refresh_gutenberg_book("36", db_path=temp_db) is False  # süreç başına bir kez
+
+    book = qb.get_book("36", db_path=temp_db)
+    assert book["title"] == "The War of the Worlds"
+    assert [c["title"] for c in qb.get_book_chapters("36", db_path=temp_db)] == new_titles
+    assert count_pool_questions("36", 1, db_path=temp_db) == 0  # sınırı değişen bölümün eski soruları silindi
+
+
+def test_refresh_is_noop_when_chapters_match_or_not_gutenberg(temp_db):
+    from src import question_bank as qb
+
+    titles = ["CHAPTER I", "CHAPTER II"]
+    register_book_content(book_id="36", title="The War of the Worlds", author="Wells", source_format="gutenberg",
+                          chapters=_gutenberg_info(titles)["chapters"], db_path=temp_db)
+    save_questions_to_pool("36", 1, [_q(1)], db_path=temp_db)
+    register_book_content(book_id="mine", title="Benim Kitabım", author="A", source_format="epub",
+                          chapters=[{"chapter_index": 1, "title": "B1", "raw_text": "x"}], db_path=temp_db)
+    qb._refreshed_books.clear()
+    with patch("src.dataset_search.get_book_chapters", return_value=_gutenberg_info(titles)) as gut:
+        assert qb.refresh_gutenberg_book("36", db_path=temp_db) is False
+        assert qb.refresh_gutenberg_book("mine", db_path=temp_db) is False
+    assert gut.call_count == 1  # içe aktarılmış (epub) kitap için Gutenberg'e hiç bakılmadı
+    assert count_pool_questions("36", 1, db_path=temp_db) == 1

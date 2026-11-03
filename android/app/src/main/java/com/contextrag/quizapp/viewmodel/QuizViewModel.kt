@@ -10,11 +10,14 @@ import com.contextrag.quizapp.data.ChapterItem
 import com.contextrag.quizapp.data.Difficulty
 import com.contextrag.quizapp.data.EvaluationResponse
 import com.contextrag.quizapp.data.HealthResponse
+import com.contextrag.quizapp.data.PreparingResponse
 import com.contextrag.quizapp.data.ServeQuizResponse
+import com.contextrag.quizapp.data.ServeResult
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class AppScreen {
@@ -48,6 +51,8 @@ data class UiState(
     val quizCount: Int = 5,
     val currentQuiz: ServeQuizResponse? = null,
     val isLoadingQuiz: Boolean = false,
+    /** Sunucu soruları arka planda hazırlarken gösterilen durum metni (null: hazırlık yok). */
+    val quizPreparingMessage: String? = null,
     val selectedAnswers: Map<Int, String> = emptyMap(), // question_id -> option
     val currentQuestionIndex: Int = 0,
 
@@ -259,37 +264,79 @@ class QuizViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isLoadingQuiz = true,
+                quizPreparingMessage = null,
                 currentQuiz = null,
                 evaluationResult = null,
                 selectedAnswers = emptyMap(),
                 currentQuestionIndex = 0
             )
 
-            apiClient.serveQuiz(
-                bookId = book.bookId,
-                chapterIndex = chapter.chapterIndex,
-                count = count,
-                difficulty = difficulty,
-                hideAnswers = true
-            ).fold(
-                onSuccess = { quizResp ->
-                    _uiState.value = _uiState.value.copy(
-                        currentQuiz = quizResp,
-                        isLoadingQuiz = false,
-                        currentScreen = AppScreen.QUIZ
-                    )
-                    if (quizResp.cacheHit) {
-                        _snackbarEvent.emit("⚡ 0ms Soru Bankası Havuzundan Getirildi (Cache Hit)!")
-                    } else {
-                        _snackbarEvent.emit("🤖 LLM ile Yeni Sorular Üretildi ve Havuzlandı.")
-                    }
-                },
-                onFailure = { err ->
-                    _uiState.value = _uiState.value.copy(isLoadingQuiz = false)
-                    _snackbarEvent.emit("Quiz yükleme hatası: ${err.localizedMessage}")
+            var waitedForPreparation = false
+            repeat(MAX_SERVE_ATTEMPTS) {
+                val outcome = apiClient.serveQuiz(
+                    bookId = book.bookId,
+                    chapterIndex = chapter.chapterIndex,
+                    count = count,
+                    difficulty = difficulty,
+                    hideAnswers = true
+                ).getOrElse { err ->
+                    failQuizLoading("Quiz yükleme hatası: ${err.localizedMessage}")
+                    return@launch
                 }
-            )
+
+                when (outcome) {
+                    is ServeResult.Ready -> {
+                        _uiState.value = _uiState.value.copy(
+                            currentQuiz = outcome.quiz,
+                            isLoadingQuiz = false,
+                            quizPreparingMessage = null,
+                            currentScreen = AppScreen.QUIZ
+                        )
+                        _snackbarEvent.emit(
+                            if (waitedForPreparation) "🤖 Sorular hazırlandı ve soru bankasına eklendi."
+                            else "⚡ Soru bankasından anında getirildi."
+                        )
+                        return@launch
+                    }
+                    is ServeResult.Preparing -> {
+                        waitedForPreparation = true
+                        if (!waitForPreparation(outcome.info)) return@launch
+                    }
+                }
+            }
+            failQuizLoading("Sorular hazırlanamadı, lütfen biraz sonra tekrar deneyin.")
         }
+    }
+
+    /** Arka plandaki hazırlık işini yoklar. Tamamlanırsa true, başarısız/zaman aşımıysa false döner. */
+    private suspend fun waitForPreparation(info: PreparingResponse): Boolean {
+        val intervalMs = info.retryAfterSeconds.coerceIn(2, 15) * 1000L
+        _uiState.value = _uiState.value.copy(quizPreparingMessage = info.message ?: "Sorular hazırlanıyor...")
+        var waitedMs = 0L
+        while (waitedMs < MAX_PREPARATION_WAIT_MS) {
+            delay(intervalMs)
+            waitedMs += intervalMs
+            val job = apiClient.getJob(info.jobId).getOrNull() ?: continue // geçici ağ hatası: yoklamaya devam
+            when (job.status) {
+                "completed" -> return true
+                "failed" -> {
+                    failQuizLoading("Sorular hazırlanamadı: ${job.error ?: "bilinmeyen hata"}")
+                    return false
+                }
+                else -> _uiState.value = _uiState.value.copy(
+                    quizPreparingMessage = job.queuePosition?.takeIf { it > 0 }
+                        ?.let { "Sorular hazırlanıyor (sırada $it iş var)..." }
+                        ?: "Sorular hazırlanıyor..."
+                )
+            }
+        }
+        failQuizLoading("Sorular hazırlanırken zaman aşımı oluştu.")
+        return false
+    }
+
+    private suspend fun failQuizLoading(message: String) {
+        _uiState.value = _uiState.value.copy(isLoadingQuiz = false, quizPreparingMessage = null)
+        _snackbarEvent.emit(message)
     }
 
     fun onOptionSelected(questionId: Int, option: String) {
@@ -352,5 +399,11 @@ class QuizViewModel @JvmOverloads constructor(
             currentQuestionIndex = 0,
             currentScreen = AppScreen.BOOK_DETAIL
         )
+    }
+
+    companion object {
+        /** Hazırlık tamamlandıktan sonra bile havuz yetersiz kalırsa en fazla bu kadar deneme yapılır. */
+        const val MAX_SERVE_ATTEMPTS = 3
+        const val MAX_PREPARATION_WAIT_MS = 10 * 60 * 1000L
     }
 }

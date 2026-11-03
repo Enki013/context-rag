@@ -6,62 +6,100 @@ A backend service that generates and grades multiple-choice quizzes from **Proje
 
 ## How It Works
 
-### Quiz generation pipeline
+### Architecture
 
-Every quiz endpoint goes through the same pipeline: the source text is split into chunks, a representative sample is grouped into LLM-sized contexts, and each generated question is validated, shuffled and independently verified against the text before it is returned.
+Generation and serving are separated. LLM generation is slow (tens of seconds per call on a local GPU), so it never runs inside an HTTP request: requests that need new questions enqueue a job, and a single background worker processes the queue in order (Ollama runs one request at a time on a single GPU anyway). The API only reads from the question bank or reports job status.
+
+```mermaid
+flowchart LR
+    subgraph Online["Online: API requests (fast)"]
+        S["GET /quiz/serve"] -->|enough verified questions| P
+        S -->|pool too small| Q
+        QZ["POST /quizzes"] --> Q
+        PP["POST /quiz/populate<br/>POST /quiz/reverify<br/>POST /books/import?prepopulate"] --> Q
+        J["GET /jobs/{id}<br/>GET /quizzes/{id}"] --> Q
+        E["POST /quiz/evaluate-answers"] --> P
+    end
+    subgraph Offline["Offline: background worker (slow)"]
+        Q[("Job queue<br/>SQLite")] --> W["Worker<br/>one job at a time"]
+        W --> G["Generation pipeline"]
+        G --> P[("Question bank<br/>verified questions + evidence")]
+        G --> M[("Run metrics<br/>rejected questions + reasons")]
+    end
+```
+
+- Repeated requests for the same chapter attach to the same queued job instead of generating twice.
+- Jobs survive restarts: on startup, jobs that were running are queued again.
+- Only verified questions (with evidence) are served. Questions generated before verification existed can be checked with `POST /quiz/reverify`.
+
+### Quiz generation pipeline
 
 ```mermaid
 flowchart TD
     A["Source<br/>Gutenberg book, PDF or EPUB"] --> B["Extract and clean text<br/>strip Gutenberg license header/footer"]
-    B --> C["Detect chapters<br/>regex headings or EPUB TOC<br/>fallback: 4 equal parts"]
+    B --> C["Detect chapters (book paths)<br/>Gutenberg EPUB table of contents, located in the text<br/>or regex headings, whichever finds more chapters"]
     C --> D["Chunk text<br/>1000 chars, 200 overlap<br/>keep real start offset per chunk"]
-    D --> E["Select chunks<br/>stratified sample over the whole text<br/>drop publisher boilerplate"]
-    E --> F["Group chunks<br/>5 chunks per group"]
+    D --> E["Select chunks<br/>whole book: 4 contiguous windows from evenly spaced slices<br/>chapter / PDF / EPUB: all chunks"]
+    E --> F["Group chunks<br/>up to 5 adjacent chunks, never mixing distant passages<br/>drop publisher boilerplate"]
     F --> G["Build context<br/>max 4000 chars, overlap removed"]
-    G --> H["Generator LLM<br/>qwen2.5:14b returns JSON questions"]
+    G --> LANG["Detect language<br/>questions are written in the source language"]
+    LANG --> H["Phase 1: generate for all groups<br/>qwen2.5:14b, JSON questions"]
     H --> I{"Structural checks<br/>4 options, valid key,<br/>no duplicates, no language mixing"}
-    I -- fail --> X1["Discard question"]
+    I -- fail --> X1["Rejected: structural"]
     I -- pass --> J["Shuffle options<br/>recompute correct letter"]
-    J --> K{"Verifier LLM<br/>gemma4:31b, thinking off<br/>same answer and verbatim evidence?"}
-    K -- no --> X2["Discard question"]
-    K -- yes --> L["Attach provenance<br/>pages, chunk indices, evidence,<br/>model, prompt version"]
-    X2 -. "group short of questions:<br/>regenerate once" .-> H
-    L --> M["Quiz response or question bank"]
+    J --> K{"Phase 2: verify all groups<br/>gemma4:31b, thinking off<br/>same answer and verbatim evidence?"}
+    K -- no --> X2["Rejected: verify"]
+    K -- yes --> DD{"Phase 3: deduplicate<br/>exact text, then bge-m3 similarity<br/>against this run and the chapter pool"}
+    DD -- duplicate --> X3["Rejected: dedup"]
+    DD -- unique --> L["Attach provenance<br/>pages, chunk indices, evidence,<br/>model, prompt version"]
+    X2 -. "groups short of questions:<br/>one more round" .-> H
+    L --> R["Question bank or quiz job result"]
+    X1 & X2 & X3 -.-> MET[("Run metrics<br/>GET /admin/metrics")]
 ```
 
 Key points:
 
-- **Coverage:** chunks are sampled from evenly spaced slices of the text, so the beginning, middle and end of a book are always represented.
+- **Coherent context:** each LLM context is a contiguous passage. Sampling single chunks from all over the book and gluing them together made the model mix unrelated scenes.
+- **Coverage:** windows come from evenly spaced slices of the text, so the beginning, middle and end of a book are always represented.
 - **Answer-position bias:** the LLM tends to put the correct answer in A or B, so options are shuffled after generation.
-- **Grounding:** a second model answers each question using only the text and must quote verbatim evidence. If it picks a different option, cannot quote the text, or the verification call fails, the question is dropped (fail closed).
+- **Grounding:** a second model from a different family answers each question using only the text and must quote verbatim evidence. If it picks a different option, cannot quote the text, or the verification call fails, the question is dropped (fail closed).
+- **Duplicates:** a question counts as a duplicate if question + answer similarity is at least 0.85, or question-only similarity is at least 0.95 (same question with a conflicting answer).
+- **Phases:** each round generates for all groups, then verifies all, then deduplicates, so Ollama switches models once per round instead of once per group.
+- **Chapters:** Gutenberg EPUB tables of contents give real chapter titles; their boundaries are located in the plain text so character offsets, chunks and progress stay consistent. Captions merged into titles and container headings ("BOOK ONE") are handled. On the 30 locally cached books this improved detection on 7 books and made none worse.
 
 ### Mobile question bank flow
 
-Mobile clients do not generate quizzes on demand. They read from a persistent per-chapter question pool, and answers are graded on the server so the client never sees the correct option.
+Mobile clients never wait for generation inside a request. If a chapter's pool is too small, the API answers `202 Accepted` with a job id, the app polls the job, and requests the quiz again when the job is done. Answers are graded on the server, so the client never sees the correct option.
 
 ```mermaid
 sequenceDiagram
     participant App as Mobile app
     participant API as FastAPI
     participant DB as SQLite question bank
+    participant W as Background worker
     participant LLM as Ollama
 
     App->>API: GET /books/{id}/chapters
     API-->>App: chapter list with progress %
 
     App->>API: GET /quiz/serve (book_id, chapter_index, count)
-    API->>DB: count questions in pool
-    alt pool has enough questions (cache hit)
+    API->>DB: count verified questions in pool
+    alt pool has enough questions
         DB-->>API: random sample
-    else pool too small (cache miss)
-        API->>API: per-chapter lock
-        API->>DB: load chapter text (or local file / Gutenberg download)
-        API->>LLM: generate + verify missing questions
-        LLM-->>API: verified questions
-        API->>DB: save to pool with evidence and model version
-        DB-->>API: random sample
+        API-->>App: 200, questions with ids, answers hidden
+    else pool too small
+        API->>DB: enqueue populate job (or reuse the queued one)
+        API-->>App: 202, job_id, poll_url, retry_after_seconds
+        W->>DB: claim job
+        W->>LLM: generate, verify, deduplicate
+        W->>DB: save verified questions with evidence
+        loop every retry_after_seconds
+            App->>API: GET /jobs/{job_id}
+            API-->>App: queued (position) / running / completed / failed
+        end
+        App->>API: GET /quiz/serve (again)
+        API-->>App: 200, questions with ids, answers hidden
     end
-    API-->>App: questions with ids, answers hidden
 
     App->>API: POST /quiz/evaluate-answers (question_id, selected_option)
     API->>DB: look up correct answers by id
@@ -93,6 +131,16 @@ ollama pull gemma4:31b
 #
 # To measure the verifier on the labeled set (evals/verifier_eval.json, 47 questions):
 # QUIZ_VERIFY_MODEL=gemma4:31b QUIZ_VERIFY_THINK=0 python scripts/eval_verifier.py --out result.json
+#
+# Duplicate filtering uses bge-m3 (already used as the embedding model):
+# export QUIZ_DEDUP_THRESHOLD=0.85           # question + answer similarity
+# export QUIZ_DEDUP_QUESTION_THRESHOLD=0.95  # question-only similarity (same question, conflicting answer)
+#
+# The background generation worker starts with the API. To run the API without it:
+# export JOB_WORKER_ENABLED=0
+#
+# Chapter detection downloads each Gutenberg book's EPUB once (cached in data/books/{id}.epub)
+# to read its table of contents.
 
 # Start the FastAPI server (port 8000)
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
@@ -174,7 +222,7 @@ Returns every chapter with its title, size and position in the book (`progress_p
 
 ### 3. Quiz Generation
 
-#### Create a quiz (RESTful)
+#### Create a quiz (RESTful, asynchronous)
 ```http
 POST /api/v1/quizzes
 Content-Type: application/json
@@ -187,7 +235,20 @@ Content-Type: application/json
   "difficulty": "medium"
 }
 ```
-Title and author are resolved from the catalog. `chapter_index` is optional; without it, questions are drawn from the whole book. Returns `201 Created` with the quiz and an `id`.
+Title and author are resolved from the catalog. `chapter_index` is optional; without it, questions are drawn from the whole book. An invalid `chapter_index` returns `400` immediately.
+
+Generation is queued and the response is `202 Accepted`:
+```json
+{ "id": "quiz_3f9a1c2b7d4e5f60", "status": "queued", "poll_url": "/api/v1/quizzes/quiz_3f9a1c2b7d4e5f60",
+  "queue_position": 0, "retry_after_seconds": 15 }
+```
+
+```http
+GET /api/v1/quizzes/{id}
+```
+- `202` while the job is `queued` or `running`
+- `200` with `status: "completed"` and the questions (including answers)
+- `200` with `status: "failed"` and an `error` message
 
 #### Generate a quiz from a book
 ```http
@@ -267,14 +328,21 @@ Content-Type: multipart/form-data
 X-Admin-Key: {ADMIN_API_KEY}
 ```
 Reads an EPUB or PDF, splits it into chapters using the embedded table of contents (TOC) and pages, and stores it. **Admin endpoint:** requires `X-Admin-Key`.
+With the form field `prepopulate=true`, a background job is queued for every chapter so the pools are ready before users arrive (`queued_jobs` in the response).
 When the same book is imported again, the question pool of every chapter whose text changed is deleted, and chapters that no longer exist are removed, so questions never end up attached to the wrong chapter (which would spoil later chapters).
 
-#### Get a chapter quiz (cache hit / on demand)
+#### Get a chapter quiz
 ```http
 GET /api/v1/quiz/serve?book_id={book_id}&chapter_index={chapter_index}&count=5&difficulty=medium&hide_answers=true
 ```
-- If the pool has enough questions: returns a random sample from the pool immediately (`cache_hit: true`).
-- If the pool is too small: generates questions from the chapter text with the LLM and saves them to the pool (`cache_hit: false`).
+This endpoint never calls the LLM.
+- If the pool has enough verified questions: `200` with a random sample (`cache_hit: true`).
+- If the pool is too small: a job that fills the pool is queued and the response is `202 Accepted` with a `Retry-After` header:
+  ```json
+  { "status": "preparing", "job_id": "3f9a1c2b7d4e5f60", "poll_url": "/api/v1/jobs/3f9a1c2b7d4e5f60",
+    "retry_after_seconds": 15, "message": "..." }
+  ```
+  Poll `poll_url` until the job is `completed`, then call `/quiz/serve` again. Concurrent requests for the same chapter share one job.
 - `hide_answers=true`: correct options and explanations are not sent to the client (`correct_answer: null`).
 - `hide_answers=false` is only accepted with a valid `X-Admin-Key` header; otherwise the response is `403`.
 
@@ -300,7 +368,28 @@ The mobile client sends only the question ID and the selected option, without kn
 POST /api/v1/quiz/populate?book_id={book_id}&chapter_index={chapter_index}&target_count=15&difficulty=medium
 X-Admin-Key: {ADMIN_API_KEY}
 ```
-Fills a chapter's question pool in the background (admin / cron) up to `target_count` questions; if the pool is partially filled, only the missing questions are generated. **Admin endpoint:** requires `X-Admin-Key`.
+Queues a job that fills a chapter's question pool up to `target_count` verified questions; if the pool is partially filled, only the missing questions are generated. Returns `202` with the job (see [Jobs](#jobs)). **Admin endpoint:** requires `X-Admin-Key`.
+
+#### Re-verify old questions
+```http
+POST /api/v1/quiz/reverify?book_id={book_id}&chapter_index={chapter_index}
+X-Admin-Key: {ADMIN_API_KEY}
+```
+Questions generated before grounding verification existed have no evidence and are not served. This job checks them: for each question, the most relevant chunks of the chapter are retrieved with bge-m3 embeddings and given to the verifier. Questions that pass get their evidence stored and are served again; the others are retired (kept in the database, never served). Both parameters are optional; without them every unverified question is checked. Returns `202` with the job. **Admin endpoint.**
+
+#### Jobs
+```http
+GET /api/v1/jobs/{job_id}
+```
+Status of a background job: `queued` (with `queue_position`), `running`, `completed` (with `result`) or `failed` (with `error`). Job kinds: `populate`, `quiz`, `reverify`.
+
+#### Pipeline metrics (admin)
+```http
+GET /api/v1/admin/metrics?limit=100
+GET /api/v1/admin/rejected-questions?stage=verify&limit=100
+X-Admin-Key: {ADMIN_API_KEY}
+```
+`metrics` summarizes the last runs: how many generated questions were rejected at each stage (structural, verify, dedup), average seconds per stage and the most common rejection reasons. `rejected-questions` returns rejected questions with their reason and source text, as candidates for the evaluation set.
 
 ---
 

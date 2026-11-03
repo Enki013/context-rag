@@ -176,6 +176,61 @@ class QuizViewModelTest {
         assertFalse(state.isCheckingHealth)
     }
 
+    private suspend fun kotlinx.coroutines.test.TestScope.viewModelWithSelectedChapter(): QuizViewModel {
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(healthJson))
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(searchJson))
+        val viewModel = QuizViewModel(apiClient)
+        advanceUntilIdle()
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(chaptersJson))
+        viewModel.selectBook(viewModel.uiState.value.searchResults.first())
+        advanceUntilIdle()
+        return viewModel
+    }
+
+    private val preparingJson = """
+        {"status": "preparing", "job_id": "job1", "poll_url": "/api/v1/jobs/job1",
+         "retry_after_seconds": 5, "message": "Bu bölümün soruları hazırlanıyor."}
+    """.trimIndent()
+
+    @Test
+    fun startQuiz_whenPoolIsPreparing_pollsJobThenOpensQuiz() = runTest {
+        val viewModel = viewModelWithSelectedChapter()
+
+        mockWebServer.enqueue(MockResponse().setResponseCode(202).setBody(preparingJson))
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(
+            """{"id": "job1", "kind": "populate", "status": "running"}"""))
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(
+            """{"id": "job1", "kind": "populate", "status": "completed"}"""))
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(quizJson))
+
+        viewModel.startQuiz()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(AppScreen.QUIZ, state.currentScreen)
+        assertEquals(2, state.currentQuiz?.questions?.size)
+        assertFalse(state.isLoadingQuiz)
+        assertNull(state.quizPreparingMessage)
+    }
+
+    @Test
+    fun startQuiz_whenPreparationFails_staysOnBookDetail() = runTest {
+        val viewModel = viewModelWithSelectedChapter()
+
+        mockWebServer.enqueue(MockResponse().setResponseCode(202).setBody(preparingJson))
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(
+            """{"id": "job1", "kind": "populate", "status": "failed", "error": "Bölüm metni bulunamadı"}"""))
+
+        viewModel.startQuiz()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(AppScreen.BOOK_DETAIL, state.currentScreen)
+        assertNull(state.currentQuiz)
+        assertFalse(state.isLoadingQuiz)
+        assertNull(state.quizPreparingMessage)
+    }
+
     @Test
     fun fullAppFlow_selectBook_selectChapter_startQuiz_answerAndEvaluate() = runTest {
         // Init responses

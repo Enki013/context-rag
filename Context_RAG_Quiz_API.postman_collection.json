@@ -11,6 +11,22 @@
       "value": "http://localhost:8000",
       "type": "string",
       "description": "API Sunucu adresi (Emülatörler için Android: http://10.0.2.2:8000, iOS: http://localhost:8000 veya yerel IP)"
+    },
+    {
+      "key": "adminKey",
+      "value": "",
+      "type": "string",
+      "description": "Sunucudaki ADMIN_API_KEY değeri"
+    },
+    {
+      "key": "jobId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "quizId",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -354,7 +370,7 @@
                 "quizzes"
               ]
             },
-            "description": "RESTful quiz kaynağı oluşturur. book_id yeterlidir; başlık/yazar katalogdan otomatik çözülür. difficulty: easy | medium | hard. Yanıt 201 Created + id/status/created_at alanları."
+            "description": "RESTful quiz kaynağı oluşturur. book_id yeterlidir; başlık/yazar katalogdan otomatik çözülür. difficulty: easy | medium | hard. Yanıt 201 Created + id/status/created_at alanları.\n\nAsenkron: 202 Accepted ve `poll_url` döner; sonuç için 'Quiz Durumu / Sonucu' isteğini kullanın."
           },
           "response": []
         },
@@ -392,7 +408,7 @@
                 "quizzes"
               ]
             },
-            "description": "🧪 [BETA] Deneysel özellik: Kitap bölümlerini ayrıştırma motoru geliştirme aşamasındadır.\n\nBelirli bir bölümden (chapter_index: 2) quiz üretir. Bölüm indeksleri için GET /api/v1/books/{book_id}/chapter-count kullanın."
+            "description": "🧪 [BETA] Deneysel özellik: Kitap bölümlerini ayrıştırma motoru geliştirme aşamasındadır.\n\nBelirli bir bölümden (chapter_index: 2) quiz üretir. Bölüm indeksleri için GET /api/v1/books/{book_id}/chapter-count kullanın.\n\nAsenkron: 202 Accepted ve `poll_url` döner; sonuç için 'Quiz Durumu / Sonucu' isteğini kullanın."
           },
           "response": []
         },
@@ -430,7 +446,33 @@
                 "quizzes"
               ]
             },
-            "description": "Frankenstein (ID: 84) kitabından kolay seviye 3 soruluk quiz üretir."
+            "description": "Frankenstein (ID: 84) kitabından kolay seviye 3 soruluk quiz üretir.\n\nAsenkron: 202 Accepted ve `poll_url` döner; sonuç için 'Quiz Durumu / Sonucu' isteğini kullanın."
+          },
+          "response": []
+        },
+        {
+          "name": "Quiz Durumu / Sonucu (GET /api/v1/quizzes/{id})",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quizzes/{{quizId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quizzes",
+                "{{quizId}}"
+              ]
+            },
+            "description": "POST /api/v1/quizzes yanıtındaki id ile çağrılır. 202: hâlâ hazırlanıyor (queued/running). 200 + status=completed: sorular. 200 + status=failed: error."
           },
           "response": []
         }
@@ -624,7 +666,7 @@
       "name": "6. Headless Soru Bankası & Mobil Quiz Servisi (Anti-Cheat & 0ms Cache)",
       "item": [
         {
-          "name": "Bölüm Quizi Getir (Cache Hit 0ms / On-Demand LLM)",
+          "name": "Bölüm Quizi Getir (200 havuzdan / 202 hazırlanıyor)",
           "request": {
             "method": "GET",
             "header": [
@@ -672,7 +714,7 @@
                 }
               ]
             },
-            "description": "Mobil kullanıcı okuduğu bölüme geldiğinde quiz çeker. Havuzda yeterli soru varsa 0 milisaniyede döner (Cache Hit). Havuz boşsa LLM ile anında üretip havuza ekler ve döner (Cache Miss). Doğru cevaplar istemciye sızdırılmaz."
+            "description": "Havuzda yeterli doğrulanmış soru varsa 200 ve sorular. Yoksa 202: havuzu dolduran iş kuyruğa alınır, yanıttaki job_id ile 'İş Durumu' isteği yoklanır, iş completed olunca bu istek tekrarlanır. Bu uç LLM çağırmaz."
           },
           "response": []
         },
@@ -718,6 +760,10 @@
               {
                 "key": "Accept",
                 "value": "application/json"
+              },
+              {
+                "key": "X-Admin-Key",
+                "value": "{{adminKey}}"
               }
             ],
             "url": {
@@ -754,7 +800,149 @@
                 }
               ]
             },
-            "description": "Arka planda (Admin veya Cron/Worker) bir bölüm için soru havuzunu önceden üretip veritabanına yığar. Kullanıcılar geldiğinde %100 Cache Hit (0ms) ile karşılaşır."
+            "description": "Admin. Havuzu target_count doğrulanmış soruya kadar dolduran işi kuyruğa alır, 202 ve iş bilgisi döner. İlerleme: 'İş Durumu' isteği."
+          },
+          "response": []
+        },
+        {
+          "name": "İş Durumu (GET /api/v1/jobs/{id})",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/jobs/{{jobId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "jobs",
+                "{{jobId}}"
+              ]
+            },
+            "description": "queued (queue_position ile) → running → completed (result) | failed (error)."
+          },
+          "response": []
+        },
+        {
+          "name": "Eski Soruları Yeniden Doğrula (Reverify)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Admin-Key",
+                "value": "{{adminKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quiz/reverify?book_id=1661&chapter_index=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "quiz",
+                "reverify"
+              ],
+              "query": [
+                {
+                  "key": "book_id",
+                  "value": "1661"
+                },
+                {
+                  "key": "chapter_index",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Admin. Kanıtı olmayan eski soruları bge-m3 ile bulunan bölüm parçalarına karşı doğrular; geçemeyenler emekliye ayrılır. 202 ve iş döner."
+          },
+          "response": []
+        },
+        {
+          "name": "Pipeline Metrikleri (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Admin-Key",
+                "value": "{{adminKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/metrics?limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "metrics"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Son çalışmalar: aşama başına eleme oranları, ortalama süreler, en sık eleme sebepleri."
+          },
+          "response": []
+        },
+        {
+          "name": "Elenen Sorular (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Admin-Key",
+                "value": "{{adminKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/rejected-questions?stage=verify&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "rejected-questions"
+              ],
+              "query": [
+                {
+                  "key": "stage",
+                  "value": "verify"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Elenen sorular sebep ve metin bağlamıyla; değerlendirme setine aday."
           },
           "response": []
         }

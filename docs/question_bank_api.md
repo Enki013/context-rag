@@ -84,8 +84,18 @@ curl http://localhost:8000/api/v1/books/nutuk/chapters
 
 ---
 
-### 3. Bölüm Quizi Getir (Cache Hit / On-Demand Serving)
-Kullanıcı bir bölümü bitirdiğinde quizi çeker.
+### 3. Bölüm Quizi Getir
+Kullanıcı bir bölümü bitirdiğinde quizi çeker. Bu uç LLM çağırmaz; yalnızca doğrulanmış soruların bulunduğu havuzdan okur.
+
+- Havuzda yeterli soru varsa: `200` ve sorular (aşağıdaki örnek).
+- Havuz yetersizse: havuzu dolduracak bir arka plan işi kuyruğa alınır ve hemen `202 Accepted` döner:
+  ```json
+  { "status": "preparing", "job_id": "3f9a1c2b7d4e5f60", "poll_url": "/api/v1/jobs/3f9a1c2b7d4e5f60",
+    "retry_after_seconds": 15, "message": "Bu bölümün soruları hazırlanıyor. Biraz sonra tekrar deneyin." }
+  ```
+  İstemci `retry_after_seconds` aralıklarla `GET /api/v1/jobs/{job_id}` yoklar
+  (`queued` → `running` → `completed` | `failed`; `queued` iken `queue_position` önündeki iş sayısını verir).
+  İş `completed` olunca aynı `serve` isteği tekrarlanır. Aynı bölüm için gelen eşzamanlı istekler aynı işe bağlanır.
 
 - **URL:** `GET /api/v1/quiz/serve`
 - **Query Parametreleri:**
@@ -186,22 +196,24 @@ Kullanıcılar okumaya başlamadan önce veya bir kitap sisteme yüklendiğinde 
 - **URL:** `POST /api/v1/quiz/populate?book_id={book_id}&chapter_index={chapter_index}&target_count=15&difficulty=medium`
 - **Header:** `X-Admin-Key: {ADMIN_API_KEY}`
 - `target_count` havuzda olması hedeflenen toplam soru sayısıdır; havuz kısmen doluysa yalnızca eksik kadar üretilir.
+- İş kuyruğa alınır ve `202 Accepted` döner. Sonuç `GET /api/v1/jobs/{id}` ile izlenir.
+- Kitap içe aktarılırken `prepopulate=true` form alanı verilirse her bölüm için bu iş otomatik kuyruğa alınır.
 
-#### Örnek Yanıt:
+#### Örnek Yanıt (202 Accepted):
 ```json
 {
-  "status": "ok",
-  "book_id": "nutuk",
-  "chapter_index": 1,
-  "difficulty": "medium",
-  "generated": 15,
-  "total_pool_size": 15,
-  "message": "Bölüm 1 havuzu hazırlandı. Toplam 15 soru mevcut."
+  "id": "3f9a1c2b7d4e5f60",
+  "kind": "populate",
+  "status": "queued",
+  "queue_position": 0,
+  "params": {"book_id": "nutuk", "chapter_index": 1, "difficulty": "medium", "target_count": 15},
+  "poll_url": "/api/v1/jobs/3f9a1c2b7d4e5f60"
 }
 ```
+İş tamamlanınca `result` alanı: `{"generated": 15, "total_pool_size": 15}`.
 
 ---
 
 ## 🔒 Güvenlik ve Mobil İpuçları
 - **Hile Koruması:** `GET /api/v1/quiz/serve` çağrısında `hide_answers` parametresini mobil istemcide daima `true` bırakın (varsayılan zaten `true`).
-- **Ağ Dayanıklılığı:** İlk kez açılan ve havuzu henüz boş olan bir bölüm için `cache_miss` olacağı için ilk çağrı 5-10 saniye sürebilir. Bu nedenle mobil backend üzerinden `populate` job'ı çalıştırmak veya mobil uygulamada ilk çağrıda şık bir yükleme animasyonu göstermek önerilir.
+- **Hazırlık durumu:** Havuzu boş bir bölüm için `serve` `202` döner ve hazırlık yerel bir GPU'da birkaç dakika sürebilir. Uygulamada "Sorular hazırlanıyor" durumu gösterin ve `poll_url`'i yoklayın (Android istemcisi bunu yapıyor). Kullanıcıyı hiç bekletmemek için kitabı `prepopulate=true` ile içe aktarın veya `populate` işini önceden çalıştırın.

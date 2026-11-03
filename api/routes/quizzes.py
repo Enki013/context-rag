@@ -1,9 +1,10 @@
 """
 api/routes/quizzes.py
 ----------------------
-RESTful quiz kaynağı endpoint'i.
+RESTful quiz kaynağı. Üretim uzun sürdüğü için asenkron çalışır:
 
-POST /api/v1/quizzes  →  Quiz oluştur (kaynak türü: book)
+POST /api/v1/quizzes       →  202 Accepted: quiz işi kuyruğa alınır, `id` ve `poll_url` döner
+GET  /api/v1/quizzes/{id}  →  202 (queued/running), 200 completed (sorularla) veya 200 failed
 
 Eski /api/v1/quiz/* endpoint'leri geriye dönük uyumluluk için korunmuştur.
 """
@@ -11,23 +12,23 @@ Eski /api/v1/quiz/* endpoint'leri geriye dönük uyumluluk için korunmuştur.
 import logging
 import os
 import sqlite3
-import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import JSONResponse
 
 from config import CATALOG_DB_PATH
+from api.routes.jobs import RETRY_AFTER_SECONDS
 from api.schemas import (
     CreateQuizRequest,
+    QuizAcceptedResponse,
     QuizQuestion,
     QuizResourceResponse,
 )
-from src.dataset_search import get_chunks_for_book
-from src.quiz_generator import generate_quiz
+from src.dataset_search import get_book_chapters
+from src.jobs import enqueue, get_job, queue_position
 
 router = APIRouter(prefix="/quizzes", tags=["Quizzes"])
 logger = logging.getLogger(__name__)
-
 
 
 def _resolve_book_metadata(book_id: str) -> tuple[str, str]:
@@ -53,112 +54,102 @@ def _resolve_book_metadata(book_id: str) -> tuple[str, str]:
     return title, author
 
 
-def _make_quiz_id() -> str:
-    """Kısa, insan-okunabilir quiz kimliği üretir. Örnek: quiz_3f7a1b2c"""
-    return "quiz_" + uuid.uuid4().hex[:8]
+def _quiz_id(job_id: str) -> str:
+    return f"quiz_{job_id}"
+
+
+def _job_id(quiz_id: str) -> str:
+    return quiz_id[len("quiz_"):] if quiz_id.startswith("quiz_") else quiz_id
+
+
+def _pending_body(job: dict) -> dict:
+    return QuizAcceptedResponse(
+        id=_quiz_id(job["id"]),
+        status=job["status"],
+        poll_url=f"/api/v1/quizzes/{_quiz_id(job['id'])}",
+        queue_position=queue_position(job["id"]) if job["status"] == "queued" else None,
+        retry_after_seconds=RETRY_AFTER_SECONDS,
+    ).model_dump()
 
 
 @router.post(
     "",
-    response_model=QuizResourceResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Quiz oluştur",
+    response_model=QuizAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Quiz oluştur (asenkron)",
     description=(
-        "Belirtilen kaynaktan (kitap) çoktan seçmeli quiz üretir.\n\n"
+        "Belirtilen kaynaktan (kitap) çoktan seçmeli quiz üretimini kuyruğa alır ve hemen `202 Accepted` döner.\n\n"
         "- **source.type**: Şimdilik yalnızca `book` desteklenmektedir.\n"
         "- **source.book_id**: Project Gutenberg kitap ID'si. Başlık/yazar otomatik çözülür.\n"
         "- **source.chapter_index**: Opsiyonel. Belirli bir bölümden soru üretmek için 1-tabanlı bölüm numarası.\n"
         "- **question_count**: 1–10 arası soru sayısı (varsayılan: 5).\n"
         "- **difficulty**: `easy` | `medium` | `hard` (varsayılan: `medium`).\n\n"
-        "Yanıt `201 Created` ile döner ve oluşturulan quiz'i `id` alanıyla birlikte içerir."
+        "Sonuç için yanıttaki `poll_url` (`GET /api/v1/quizzes/{id}`) yoklanır."
     ),
 )
-def create_quiz(req: CreateQuizRequest) -> QuizResourceResponse:
-    """
-    POST /api/v1/quizzes
-
-    Kitap kaynağından RESTful quiz kaynağı oluşturur.
-    - title / author katalogdan otomatik çözülür.
-    - Yanıt 201 Created, body'de tam quiz objesi.
-    """
+def create_quiz(req: CreateQuizRequest):
     book_id = req.source.book_id
     chapter_index = req.source.chapter_index
-    difficulty = req.difficulty.value  # "easy" | "medium" | "hard"
-
-    # Kitap metadata'sını katalogdan çöz
     title, author = _resolve_book_metadata(book_id)
 
-    # Chunk'ları getir
-    try:
-        chunks = get_chunks_for_book(
-            book_id,
-            title,
-            author,
-            max_chunks=20,
-            chapter_index=chapter_index,
-        )
-    except ValueError as exc:
-        logger.warning(f"Kitap parametre hatası (book_id={book_id}): {exc}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    except Exception as exc:
-        logger.error(f"Kitap chunk'ları getirilemedi (book_id={book_id}): {exc}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Kitap metni işlenemedi: {exc}",
-        )
+    # Geçersiz bölüm numarası iş kuyruğa girmeden, hemen bildirilir
+    if chapter_index is not None:
+        try:
+            total = get_book_chapters(book_id)["total_chapters"]
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Kitap metnine ulaşılamadı (ID: {book_id})")
+        if chapter_index > total:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Geçersiz bölüm numarası: {chapter_index}. Bu kitapta toplam {total} bölüm bulunuyor.",
+            )
 
-    # Quiz üret
-    try:
-        quiz_chunks = [
-            {
-                "text": c["text"],
-                "source_pages": c.get("source_pages", []),
-                "source_chapter": c.get("source_chapter"),
-                "progress_percent": c.get("progress_percent"),
-            }
-            for c in chunks
-        ]
-        raw_questions = generate_quiz(
-            quiz_chunks,
-            num_questions=req.question_count,
-            difficulty=difficulty,
-        )
-    except RuntimeError as exc:
-        logger.error(f"Quiz üretimi başarısız (book_id={book_id}): {exc}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Quiz üretimi sırasında hata oluştu: {exc}",
-        )
-    except Exception as exc:
-        logger.error(f"Quiz üretimi beklenmedik hata (book_id={book_id}): {exc}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Quiz üretimi sırasında beklenmedik hata: {exc}",
-        )
+    job = enqueue("quiz", {
+        "book_id": book_id,
+        "chapter_index": chapter_index,
+        "title": title,
+        "author": author,
+        "question_count": req.question_count,
+        "difficulty": req.difficulty.value,
+    })
+    return JSONResponse(status_code=202, headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
+                        content=_pending_body(job))
 
-    questions = [
-        QuizQuestion(
-            question=q["question"],
-            options=q["options"],
-            correct_answer=q["correct_answer"],
-            explanation=q["explanation"],
-            source_pages=q.get("source_pages", []),
-            source_chapter=q.get("source_chapter"),
-            progress_percent=q.get("progress_percent"),
-        )
-        for q in raw_questions
-    ]
 
+@router.get(
+    "/{quiz_id}",
+    response_model=QuizResourceResponse,
+    summary="Quiz durumunu veya sonucunu getir",
+    responses={202: {"model": QuizAcceptedResponse, "description": "Quiz hâlâ hazırlanıyor"}},
+)
+def get_quiz(quiz_id: str):
+    """
+    - `202`: iş kuyrukta veya çalışıyor (`status`: queued | running)
+    - `200` + `status: completed`: quiz soruları ve cevaplarıyla
+    - `200` + `status: failed`: `error` alanında sebep
+    """
+    job = get_job(_job_id(quiz_id))
+    if not job or job["kind"] != "quiz":
+        raise HTTPException(status_code=404, detail=f"Quiz bulunamadı: {quiz_id}")
+
+    if job["status"] in ("queued", "running"):
+        return JSONResponse(status_code=202, headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
+                            content=_pending_body(job))
+    if job["status"] == "failed":
+        return JSONResponse(status_code=200, content={**_pending_body(job), "error": job.get("error")})
+
+    params = job["params"]
+    questions = [QuizQuestion(**q) for q in (job.get("result") or {}).get("questions", [])]
     return QuizResourceResponse(
-        id=_make_quiz_id(),
+        id=_quiz_id(job["id"]),
         source_type="book",
-        book_id=book_id,
-        chapter_index=chapter_index,
-        title=title,
-        author=author or None,
+        book_id=params["book_id"],
+        chapter_index=params.get("chapter_index"),
+        title=params.get("title") or f"Kitap #{params['book_id']}",
+        author=params.get("author") or None,
         question_count=len(questions),
-        difficulty=difficulty,
+        difficulty=params.get("difficulty", "medium"),
         status="completed",
         questions=questions,
-        created_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        created_at=str(job.get("finished_at") or job.get("created_at")),
     )

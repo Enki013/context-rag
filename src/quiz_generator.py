@@ -2,6 +2,8 @@ import json
 import re
 import math
 import random
+import time
+from collections import Counter
 import logging
 import numpy as np
 import ollama as ollama_client
@@ -144,42 +146,42 @@ def _shuffle_options(q: dict, rng: random.Random | None = None) -> dict:
     return q
 
 
-def _validate_question(q: dict, expected_lang: str) -> bool:
-    """Bir sorunun yapisal, dilsel ve kalite kontrolünü yapar."""
+def _validation_error(q: dict, expected_lang: str) -> str | None:
+    """Bir sorunun yapısal, dilsel ve kalite kontrolü. Geçerliyse None, değilse kısa bir sebep döner."""
+    if not isinstance(q, dict):
+        return "not_an_object"
     required = ["question", "options", "correct_answer", "explanation"]
     if not all(key in q for key in required):
-        logger.debug(f"Eksik alan: {q.get('question', '?')[:50]}")
-        return False
-
+        return "missing_fields"
     if not isinstance(q["options"], list) or len(q["options"]) != 4:
-        logger.debug(f"Sik sayisi hatali: {q.get('question', '?')[:50]}")
-        return False
-
+        return "wrong_option_count"
     if q["correct_answer"] not in _LETTERS:
-        logger.debug(f"Gecersiz correct_answer: {q.get('correct_answer')}")
-        return False
-
+        return "invalid_correct_answer"
     if _has_duplicate_options(q["options"]):
-        logger.debug(f"Tekrarlanan sik: {q.get('question', '?')[:50]}")
-        return False
-
-    # Soru cok kisa mi?
-    if len(q["question"].strip()) < 10:
-        logger.debug(f"Soru cok kisa: '{q['question']}'")
-        return False
-
-    # Dil karisimi kontrolu
+        return "duplicate_options"
+    if len(str(q["question"]).strip()) < 10:
+        return "question_too_short"
     full_text = q["question"] + " " + " ".join(q["options"]) + " " + q["explanation"]
     if _has_language_mixing(full_text, expected_lang):
-        logger.warning(f"Dil karisimi tespit edildi, soru atlanıyor: '{q['question'][:60]}'")
-        return False
-
-    # Belirsiz secenekler
+        return "language_mixing"
     if _has_vague_options(q["options"]):
-        logger.warning(f"Belirsiz secenek tespit edildi, soru atlanıyor: '{q['question'][:60]}'")
-        return False
+        return "vague_options"
+    return None
 
-    return True
+
+def _validate_question(q: dict, expected_lang: str) -> bool:
+    """Bir sorunun yapısal, dilsel ve kalite kontrolünü yapar."""
+    error = _validation_error(q, expected_lang)
+    if error:
+        logger.debug(f"Soru kalite kontrolünden geçemedi ({error}): {str(q.get('question', '?'))[:60] if isinstance(q, dict) else q}")
+    return error is None
+
+
+def _reject(rejects: list | None, stage: str, reason: str, q, context: str | None = None):
+    """Elenen bir soruyu sebebiyle birlikte kaydeder (gözlemlenebilirlik ve değerlendirme setini büyütmek için)."""
+    if rejects is None:
+        return
+    rejects.append({"stage": stage, "reason": reason, "question": q, "context": context})
 
 
 def _get_chunk_text(chunk) -> str:
@@ -350,8 +352,9 @@ def _call_llm(
     count: int,
     language: str,
     difficulty: str = "medium",
+    rejects: list | None = None,
 ) -> list[dict]:
-    """Tek bir LLM çağrısı yapıp geçerli soruları döner."""
+    """Tek bir LLM çağrısı yapıp geçerli soruları döner. Elenenler `rejects` listesine eklenir."""
     prompt = build_quiz_prompt(
         context=context,
         count=count,
@@ -389,7 +392,13 @@ def _call_llm(
                 continue
 
             questions = parsed.get("questions", [])
-            valid = [q for q in questions if _validate_question(q, language)]
+            valid = []
+            for q in questions:
+                error = _validation_error(q, language)
+                if error:
+                    _reject(rejects, "structural", error, q, context)
+                else:
+                    valid.append(q)
 
             if valid:
                 logger.info(
@@ -451,7 +460,7 @@ def _parse_json_object(text: str) -> dict | None:
     return None
 
 
-def _verify_questions(questions: list[dict], context: str) -> list[dict]:
+def _verify_questions(questions: list[dict], context: str, rejects: list | None = None) -> list[dict]:
     """
     Grounding kontrolü: ikinci bir LLM çağrısı soruları yalnızca metne bakarak bağımsız cevaplar.
     Bir soru, doğrulayıcı aynı şıkkı seçer VE metinde birebir geçen bir kanıt alıntısı verirse kalır.
@@ -490,6 +499,8 @@ def _verify_questions(questions: list[dict], context: str) -> list[dict]:
 
     if not parsed:
         logger.warning(f"Doğrulama yapılamadı, {len(questions)} soru atlandı")
+        for q in questions:
+            _reject(rejects, "verify", "verification_failed", q, context)
         return []
 
     by_id = {}
@@ -511,9 +522,12 @@ def _verify_questions(questions: list[dict], context: str) -> list[dict]:
                 f"Doğrulama reddetti (beklenen {q['correct_answer']}, doğrulayıcı {answer or '-'}): "
                 f"'{q['question'][:70]}'"
             )
+            reason = "no_supported_answer" if answer == "NONE" else "answer_mismatch"
+            _reject(rejects, "verify", f"{reason}:{answer or '-'}", q, context)
             continue
         if not _evidence_in_context(evidence, context):
             logger.warning(f"Kanıt metinde bulunamadı, soru atlandı: '{q['question'][:70]}'")
+            _reject(rejects, "verify", "evidence_not_found", dict(q, evidence=evidence), context)
             continue
 
         q["evidence"] = evidence.strip()
@@ -533,7 +547,7 @@ def _dedup_text(q: dict) -> str:
     return f"{q['question']} {answer}".strip()
 
 
-def _deduplicate(candidates: list[dict], existing: list[dict] | None = None) -> list[dict]:
+def _deduplicate(candidates: list[dict], existing: list[dict] | None = None, rejects: list | None = None) -> list[dict]:
     """
     Tekrar eden soruları eler: önce birebir aynı soru metni, sonra bge-m3 embedding benzerliği.
     Soru+cevap benzerliği >= DEDUP_SIMILARITY_THRESHOLD (aynı soru, aynı cevap) veya yalnızca soru
@@ -548,6 +562,7 @@ def _deduplicate(candidates: list[dict], existing: list[dict] | None = None) -> 
         key = _normalize_for_match(q["question"])
         if key in seen:
             logger.info(f"Birebir tekrar atlandı: '{q['question'][:70]}'")
+            _reject(rejects, "dedup", "exact_duplicate", q)
             continue
         seen.add(key)
         unique.append(q)
@@ -576,6 +591,7 @@ def _deduplicate(candidates: list[dict], existing: list[dict] | None = None) -> 
                 logger.info(
                     f"Benzer soru atlandı (soru+cevap {sim_qa:.2f}, soru {sim_q:.2f}): '{q['question'][:70]}'"
                 )
+                _reject(rejects, "dedup", f"similar:qa={sim_qa:.2f},q={sim_q:.2f}", q)
                 continue
         kept_idx.append(i)
         kept.append(q)
@@ -589,6 +605,7 @@ def generate_quiz(
     question_type: str = "multiple_choice",
     randomize: bool = True,
     exclude_questions: list[dict] | None = None,
+    stats: dict | None = None,
 ) -> list[dict]:
     """
     Chunk'lardan çoktan seçmeli quiz soruları üretir.
@@ -608,6 +625,8 @@ def generate_quiz(
         question_type: Soru türü ("multiple_choice")
         randomize: True ise her seferinde farklı chunk gruplarından rastgele örnekleme yapar
         exclude_questions: Tekrarı istenmeyen mevcut sorular (örn. havuzdakiler)
+        stats: Verilirse çalışma istatistikleriyle doldurulur (aşama süreleri, LLM çağrıları,
+            aşama başına elenen soru sayıları ve sebepleriyle elenen sorular `rejected` altında)
 
     Returns:
         [{"question": "...", "options": [...], "correct_answer": "A",
@@ -646,28 +665,42 @@ def generate_quiz(
 
     exclude = list(exclude_questions or [])
     rounds = MAX_GROUP_ATTEMPTS if VERIFY_ANSWERS else 1
+    rejects: list[dict] = []
+    seconds = {"generate": 0.0, "verify": 0.0, "dedup": 0.0}
+    counters = {"rounds": 0, "llm_calls": 0, "generated": 0}
+    t_start = time.perf_counter()
     for round_no in range(1, rounds + 1):
         pending = [p for p in plan if len(p["accepted"]) < p["target"]]
         if not pending:
             break
         logger.info(f"Tur {round_no}/{rounds}: {len(pending)} grup")
+        counters["rounds"] += 1
 
         # Aşama 1: üretim (üretici model)
+        t = time.perf_counter()
         for p in pending:
             need = p["target"] - len(p["accepted"])
+            counters["llm_calls"] += 1
+            before = len(rejects)
             p["candidates"] = [
                 _shuffle_options(q)
-                for q in _call_llm(p["context"], need, detected_lang, difficulty=difficulty)
+                for q in _call_llm(p["context"], need, detected_lang, difficulty=difficulty, rejects=rejects)
             ]
+            counters["generated"] += len(p["candidates"]) + (len(rejects) - before)
+        seconds["generate"] += time.perf_counter() - t
 
         # Aşama 2: doğrulama (doğrulayıcı model)
         if VERIFY_ANSWERS:
+            t = time.perf_counter()
             for p in pending:
-                p["candidates"] = _verify_questions(p["candidates"], p["context"])
+                p["candidates"] = _verify_questions(p["candidates"], p["context"], rejects=rejects)
+            seconds["verify"] += time.perf_counter() - t
 
         # Aşama 3: tekrar eleme (tek embedding çağrısı)
+        t = time.perf_counter()
         already = exclude + [q for p in plan for q in p["accepted"]]
-        unique_ids = {id(q) for q in _deduplicate([q for p in pending for q in p["candidates"]], already)}
+        unique_ids = {id(q) for q in _deduplicate([q for p in pending for q in p["candidates"]], already, rejects=rejects)}
+        seconds["dedup"] += time.perf_counter() - t
         for p in pending:
             need = p["target"] - len(p["accepted"])
             p["accepted"].extend([q for q in p["candidates"] if id(q) in unique_ids][:need])
@@ -690,6 +723,26 @@ def generate_quiz(
             if progress_percent is not None:
                 q["progress_percent"] = progress_percent
             all_questions.append(q)
+
+    if stats is not None:
+        by_stage = Counter(r["stage"] for r in rejects)
+        stats.update({
+            "groups": len(plan),
+            **counters,
+            "structural_rejected": by_stage.get("structural", 0),
+            "verify_rejected": by_stage.get("verify", 0),
+            "dedup_rejected": by_stage.get("dedup", 0),
+            "accepted": len(all_questions),
+            "returned": min(len(all_questions), num_questions),
+            "requested": num_questions,
+            "seconds": {k: round(v, 2) for k, v in
+                        {**seconds, "total": time.perf_counter() - t_start}.items()},
+            "model": LLM_MODEL,
+            "verify_model": VERIFY_MODEL if VERIFY_ANSWERS else None,
+            "prompt_version": PROMPT_VERSION,
+            "difficulty": difficulty,
+            "rejected": rejects,
+        })
 
     if not all_questions:
         raise RuntimeError(

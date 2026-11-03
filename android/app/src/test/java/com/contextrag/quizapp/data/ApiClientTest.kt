@@ -175,12 +175,38 @@ class ApiClientTest {
 
         val result = apiClient.serveQuiz("1661", chapterIndex = 1, count = 2, difficulty = "medium", hideAnswers = true)
         assertTrue(result.isSuccess)
-        val quiz = result.getOrNull()
+        val quiz = (result.getOrNull() as? ServeResult.Ready)?.quiz
         assertNotNull(quiz)
         assertTrue(quiz?.cacheHit == true)
         assertEquals(2, quiz?.questions?.size)
         assertEquals(101, quiz?.questions?.get(0)?.id)
         assertEquals(4, quiz?.questions?.get(0)?.options?.size)
+    }
+
+    @Test
+    fun serveQuiz_202_returnsPreparing() = runBlocking {
+        val json = """
+            {"status": "preparing", "job_id": "abc123", "poll_url": "/api/v1/jobs/abc123",
+             "retry_after_seconds": 15, "message": "Sorular hazırlanıyor."}
+        """.trimIndent()
+        mockWebServer.enqueue(MockResponse().setResponseCode(202).setBody(json))
+
+        val result = apiClient.serveQuiz("1661", chapterIndex = 3, count = 5)
+        val preparing = result.getOrNull() as? ServeResult.Preparing
+        assertNotNull(preparing)
+        assertEquals("abc123", preparing?.info?.jobId)
+        assertEquals(15, preparing?.info?.retryAfterSeconds)
+    }
+
+    @Test
+    fun getJob_parsesStatus() = runBlocking {
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(
+            """{"id": "abc123", "kind": "populate", "status": "queued", "queue_position": 2, "poll_url": "/api/v1/jobs/abc123"}"""
+        ))
+        val job = apiClient.getJob("abc123").getOrNull()
+        assertEquals("queued", job?.status)
+        assertEquals(2, job?.queuePosition)
+        assertEquals("/api/v1/jobs/abc123", mockWebServer.takeRequest().path)
     }
 
     @Test

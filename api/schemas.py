@@ -4,7 +4,7 @@ api/schemas.py
 Mobile ve web API istek ve yanıtları için Pydantic şemaları.
 """
 
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 
 from src.difficulty import Difficulty, DifficultyParam
 from pydantic import BaseModel, Field
@@ -165,6 +165,37 @@ class QuizResourceResponse(BaseModel):
 
 
 
+class QuizAcceptedResponse(BaseModel):
+    id: str = Field(..., example="quiz_3f9a1c2b7d4e5f60")
+    status: str = Field(..., example="queued", description="queued | running | failed")
+    poll_url: str = Field(..., example="/api/v1/quizzes/quiz_3f9a1c2b7d4e5f60")
+    queue_position: Optional[int] = None
+    retry_after_seconds: int = 15
+    error: Optional[str] = None
+
+
+class JobResponse(BaseModel):
+    id: str = Field(..., example="3f9a1c2b7d4e5f60")
+    kind: str = Field(..., example="populate", description="populate | quiz | reverify")
+    status: str = Field(..., example="queued", description="queued | running | completed | failed")
+    queue_position: Optional[int] = Field(None, description="Önünde kaç iş var (yalnızca queued iken)")
+    params: Optional[dict] = None
+    result: Optional[Any] = None
+    error: Optional[str] = None
+    created_at: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    poll_url: str = Field(..., example="/api/v1/jobs/3f9a1c2b7d4e5f60")
+
+
+class PreparingResponse(BaseModel):
+    status: str = Field("preparing", example="preparing")
+    job_id: str = Field(..., example="3f9a1c2b7d4e5f60")
+    poll_url: str = Field(..., example="/api/v1/jobs/3f9a1c2b7d4e5f60")
+    retry_after_seconds: int = Field(15, description="Tekrar denemeden önce önerilen bekleme")
+    message: str = Field("Sorular hazırlanıyor.", example="Sorular hazırlanıyor.")
+
+
 # ─── Quiz Evaluation (Cevap Kontrolü) ────────────────────────────────────────
 
 
@@ -217,6 +248,7 @@ class BookImportResponse(BaseModel):
     total_chapters: int = Field(..., example=12)
     total_pages: int = Field(0, example=160)
     chapters: List[EngineChapterItem]
+    queued_jobs: int = Field(0, description="prepopulate=true ise kuyruğa alınan havuz doldurma işi sayısı")
 
 
 class EngineServedQuestion(BaseModel):

@@ -210,7 +210,7 @@ fun BookDetailScreen(
                                     strokeWidth = 2.dp
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Soru Bankasından Çekiliyor...")
+                                Text(state.quizPreparingMessage ?: "Soru Bankasından Çekiliyor...")
                             } else {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
