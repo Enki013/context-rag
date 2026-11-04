@@ -8,7 +8,9 @@ A backend service that generates and grades multiple-choice quizzes from **Proje
 
 ### Architecture
 
-Generation and serving are separated. LLM generation is slow (tens of seconds per call on a local GPU), so it never runs inside an HTTP request: requests that need new questions enqueue a job, and a single background worker processes the queue in order (Ollama runs one request at a time on a single GPU anyway). The API only reads from the question bank or reports job status.
+Generation and serving are separated. LLM generation is slow (tens of seconds per call on a local GPU), so the main endpoints never run it inside an HTTP request: requests that need new questions enqueue a job, and a single background worker processes the queue in order (Ollama runs one request at a time on a single GPU anyway). These endpoints only read from the question bank or report job status.
+
+The legacy endpoints `POST /quiz/generate-from-book`, `/generate-from-pdf` and `/generate-from-epub` are the exception: they are kept for backward compatibility and still generate synchronously, so a request can take several minutes and runs alongside the worker on the same Ollama instance. New clients should use `POST /quizzes` (books) or the question bank flow instead.
 
 ```mermaid
 flowchart LR
@@ -25,6 +27,9 @@ flowchart LR
         W --> G["Generation pipeline"]
         G --> P[("Question bank<br/>verified questions + evidence")]
         G --> M[("Run metrics<br/>rejected questions + reasons")]
+    end
+    subgraph Legacy["Legacy: synchronous (slow, inside the request)"]
+        LG["POST /quiz/generate-from-book<br/>POST /quiz/generate-from-pdf<br/>POST /quiz/generate-from-epub"] --> G
     end
 ```
 
@@ -249,6 +254,10 @@ GET /api/v1/quizzes/{id}
 - `202` while the job is `queued` or `running`
 - `200` with `status: "completed"` and the questions (including answers)
 - `200` with `status: "failed"` and an `error` message
+
+#### Legacy synchronous endpoints
+
+The three endpoints below run generation inside the request and answer only when the quiz is ready (often several minutes with verification on). Set a long client timeout. Generated questions are not stored in the question bank.
 
 #### Generate a quiz from a book
 ```http
