@@ -216,7 +216,7 @@ class ApiClientTest {
                 "total_questions": 2,
                 "correct_count": 2,
                 "score_percentage": 100.0,
-                "result_badge": "Kusursuz! 🌟",
+                "result_badge": "Kusursuz!",
                 "details": [
                     {
                         "question_id": 101,
@@ -254,7 +254,7 @@ class ApiClientTest {
         assertEquals(2, eval?.totalQuestions)
         assertEquals(2, eval?.correctCount)
         assertEquals(100.0f, eval?.scorePercentage)
-        assertEquals("Kusursuz! 🌟", eval?.resultBadge)
+        assertEquals("Kusursuz!", eval?.resultBadge)
         assertTrue(eval?.details?.all { it.isCorrect } == true)
 
         val recordedRequest = mockWebServer.takeRequest()

@@ -318,7 +318,7 @@ fun BookDetailScreen(
                                     color = MaterialTheme.colorScheme.errorContainer
                                 ) {
                                     Text(
-                                        text = "⚠️ Metin Erişilemedi",
+                                        text = "Metin Erişilemedi",
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onErrorContainer,

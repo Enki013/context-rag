@@ -115,7 +115,7 @@ class QuizViewModelTest {
             "total_questions": 2,
             "correct_count": 2,
             "score_percentage": 100.0,
-            "result_badge": "Kusursuz! 🌟",
+            "result_badge": "Kusursuz!",
             "details": [
                 {
                     "question_id": 101,
@@ -311,7 +311,7 @@ class QuizViewModelTest {
         assertNotNull(state.evaluationResult)
         assertEquals(2, state.evaluationResult?.correctCount)
         assertEquals(100.0f, state.evaluationResult?.scorePercentage)
-        assertEquals("Kusursuz! 🌟", state.evaluationResult?.resultBadge)
+        assertEquals("Kusursuz!", state.evaluationResult?.resultBadge)
 
         // 7. Geri Dönüş Fonksiyonları
         viewModel.returnToChapters()

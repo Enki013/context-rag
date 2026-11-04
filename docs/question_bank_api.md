@@ -189,7 +189,7 @@ The app sends the options the user picked, together with the question IDs.
   "total_questions": 2,
   "correct_count": 2,
   "score_percentage": 100.0,
-  "result_badge": "Kusursuz! 🏆",
+  "result_badge": "Kusursuz!",
   "details": [
     {
       "question_id": 101,
@@ -205,7 +205,7 @@ The app sends the options the user picked, together with the question IDs.
 }
 ```
 
-`result_badge` is a ready-made Turkish label from the server, based on the score: 100% `Kusursuz! 🏆`, 80%+ `Harika! 🌟`, 60%+ `İyi İş! 👍`, otherwise `Tekrar Dene! 📚`.
+`result_badge` is a ready-made Turkish label from the server, based on the score: 100% `Kusursuz!`, 80%+ `Harika!`, 60%+ `İyi İş!`, otherwise `Tekrar Dene!`.
 
 ---
 

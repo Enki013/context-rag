@@ -327,11 +327,11 @@ def evaluate_quiz(req: QuizEvaluationRequest):
     pct = (correct_count / total * 100.0) if total > 0 else 0.0
 
     if pct >= 80:
-        badge = "Harika! 🏆"
+        badge = "Harika!"
     elif pct >= 50:
-        badge = "İyi 👍"
+        badge = "İyi"
     else:
-        badge = "Daha Çok Çalışmalısın 📚"
+        badge = "Daha Çok Çalışmalısın"
 
     return QuizEvaluationResponse(
         total_questions=total,

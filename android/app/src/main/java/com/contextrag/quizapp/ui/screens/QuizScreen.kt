@@ -287,7 +287,7 @@ fun QuizScreen(
                                     modifier = Modifier.size(13.dp)
                                 )
                                 Text(
-                                    text = "⚡ Soru Havuzu (Cache Hit)",
+                                    text = "Soru Havuzu (Cache Hit)",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = OnCacheHitGreen,
                                     fontWeight = FontWeight.Bold
@@ -311,7 +311,7 @@ fun QuizScreen(
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    text = "🤖 Qwen 2.5 LLM",
+                                    text = "Qwen 2.5 LLM",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold

@@ -223,7 +223,7 @@ class QuizEvaluationResponse(BaseModel):
     total_questions: int = Field(..., example=5)
     correct_count: int = Field(..., example=4)
     score_percentage: float = Field(..., example=80.0)
-    result_badge: str = Field(..., example="Harika! 🏆")
+    result_badge: str = Field(..., example="Harika!")
     details: List[QuestionEvaluationResult]
 
 
@@ -299,6 +299,6 @@ class BankEvaluationResponse(BaseModel):
     total_questions: int = Field(..., example=5)
     correct_count: int = Field(..., example=4)
     score_percentage: float = Field(..., example=80.0)
-    result_badge: str = Field(..., example="Harika! 🌟")
+    result_badge: str = Field(..., example="Harika!")
     details: List[BankQuestionResult]
 

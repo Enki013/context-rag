@@ -127,7 +127,7 @@ class TestQuizEvaluationEndpoint:
         assert data["total_questions"] == 2
         assert data["correct_count"] == 2
         assert data["score_percentage"] == 100.0
-        assert "🏆" in data["result_badge"]
+        assert data["result_badge"] == "Harika!"
         assert all(d["is_correct"] is True for d in data["details"])
 
     def test_evaluate_partial_score(self):

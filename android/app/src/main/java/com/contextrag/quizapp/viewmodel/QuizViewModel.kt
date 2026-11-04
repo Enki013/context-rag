@@ -293,8 +293,8 @@ class QuizViewModel @JvmOverloads constructor(
                             currentScreen = AppScreen.QUIZ
                         )
                         _snackbarEvent.emit(
-                            if (waitedForPreparation) "🤖 Sorular hazırlandı ve soru bankasına eklendi."
-                            else "⚡ Soru bankasından anında getirildi."
+                            if (waitedForPreparation) "Sorular hazırlandı ve soru bankasına eklendi."
+                            else "Soru bankasından anında getirildi."
                         )
                         return@launch
                     }

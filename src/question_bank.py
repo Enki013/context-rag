@@ -857,13 +857,13 @@ def evaluate_answers_against_bank(
     pct = round((correct_count / total) * 100, 1) if total > 0 else 0.0
 
     if pct == 100.0:
-        badge = "Kusursuz! 🏆"
+        badge = "Kusursuz!"
     elif pct >= 80.0:
-        badge = "Harika! 🌟"
+        badge = "Harika!"
     elif pct >= 60.0:
-        badge = "İyi İş! 👍"
+        badge = "İyi İş!"
     else:
-        badge = "Tekrar Dene! 📚"
+        badge = "Tekrar Dene!"
 
     return {
         "total_questions": total,

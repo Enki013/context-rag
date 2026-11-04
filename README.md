@@ -74,42 +74,9 @@ Key points:
 
 ### Mobile question bank flow
 
-Mobile clients never wait for generation inside a request. If a chapter's pool is too small, the API answers `202 Accepted` with a job id, the app polls the job, and requests the quiz again when the job is done. Answers are graded on the server, so the client never sees the correct option.
+Mobile clients never wait for generation inside a request. If a chapter's pool is too small, `GET /quiz/serve` answers `202 Accepted` with a job id; the app polls `GET /jobs/{id}` and requests the quiz again when the job is done. Answers are graded on the server by question id, so the client never sees the correct option.
 
-```mermaid
-sequenceDiagram
-    participant App as Mobile app
-    participant API as FastAPI
-    participant DB as SQLite question bank
-    participant W as Background worker
-    participant LLM as Ollama
-
-    App->>API: GET /books/{id}/chapters
-    API-->>App: chapter list with progress %
-
-    App->>API: GET /quiz/serve (book_id, chapter_index, count)
-    API->>DB: count verified questions in pool
-    alt pool has enough questions
-        DB-->>API: random sample
-        API-->>App: 200, questions with ids, answers hidden
-    else pool too small
-        API->>DB: enqueue populate job (or reuse the queued one)
-        API-->>App: 202, job_id, poll_url, retry_after_seconds
-        W->>DB: claim job
-        W->>LLM: generate, verify, deduplicate
-        W->>DB: save verified questions with evidence
-        loop every retry_after_seconds
-            App->>API: GET /jobs/{job_id}
-            API-->>App: queued (position) / running / completed / failed
-        end
-        App->>API: GET /quiz/serve (again)
-        API-->>App: 200, questions with ids, answers hidden
-    end
-
-    App->>API: POST /quiz/evaluate-answers (question_id, selected_option)
-    API->>DB: look up correct answers by id
-    API-->>App: score, per-question result and explanation
-```
+The full sequence diagram and how the Android client handles each case are in [android/README.md](android/README.md#quiz-flow). The API contract for any mobile client is in [docs/question_bank_api.md](docs/question_bank_api.md).
 
 ---
 
